@@ -4,7 +4,7 @@ import { S } from './state.js';
 import { t } from './i18n.js';
 
 export const PARAMS = [
-  { g: 'Size', open: true },
+  { g: 'Size' },
   { id: 'width', label: 'Object width', unit: 'mm', min: 10, max: 250, step: 1, val: 80, only: 'image' },
   { id: 'scale', label: 'Scale', unit: '%', min: 10, max: 400, step: 5, val: 100, only: 'stl' },
   { id: 'stlUp', label: 'Which side faces up', type: 'select', val: 'z', only: 'stl',
@@ -21,7 +21,7 @@ export const PARAMS = [
     hint: 'Removes enclosed background, like the space between legs. Higher opens more, 0 keeps everything filled.' },
   { id: 'maskSmooth', label: 'Outline smoothing', unit: 'mm', min: 0, max: 3, step: 0.1, val: 0.2 },
 
-  { g: 'Relief', open: true },
+  { g: 'Relief' },
   { id: 'colorTol', label: 'Colour area tolerance', min: 4, max: 60, step: 1, val: 16, only: 'image', modes: 'cartoon',
     hint: 'Lower = more, smaller areas (more detail). Higher = merges shading.' },
   { id: 'simplify', label: 'Smooth out texture', unit: '', min: 0, max: 4, step: 1, val: 0, only: 'image', modes: 'cartoon',
@@ -42,7 +42,7 @@ export const PARAMS = [
   { id: 'reliefSmooth', label: 'Relief smoothing', unit: 'mm', min: 0, max: 3, step: 0.05, val: 0.1 },
   { id: 'edgeSoft', label: 'Edge rounding', unit: 'mm', min: 0, max: 6, step: 0.1, val: 1, only: 'image', modes: 'ai bright' },
 
-  { g: 'Final object', open: true },
+  { g: 'Final object' },
   { id: 'backT', label: 'Back thickness', unit: 'mm', min: 0, max: 20, step: 0.5, val: 2,
     hint: 'Flat-sided base under the relief.' },
   { id: 'border', label: 'Flat border around shape', unit: 'mm', min: 0, max: 20, step: 0.5, val: 0,
@@ -87,10 +87,13 @@ export function buildControls(onChange) {
   for (const d of PARAMS) {
     if (d.g) {
       const det = document.createElement('details');
-      det.open = store.get('sections', {})[d.g] ?? !!d.open;
-      det.addEventListener('toggle', () => { const o = store.get('sections', {}); o[d.g] = det.open; store.set('sections', o); });
+      det.open = store.get('sections', {})[d.g] ?? true; // all sections start open
       if (d.only) det.dataset.only = d.only;
       det.innerHTML = `<summary>${t(d.g)}</summary><div class="body"></div>`;
+      // remember only what you open or close yourself (summary clicks, also from the keyboard)
+      det.querySelector('summary').addEventListener('click', () => setTimeout(() => {
+        const o = store.get('sections', {}); o[d.g] = det.open; store.set('sections', o);
+      }));
       root.appendChild(det);
       sec = det.querySelector('.body');
       continue;
