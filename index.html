@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mold Template Maker</title>
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="head">
+      <h1>Mold Template Maker <span class="hbtns"><span class="langpick" data-t-title="Language" title="Language"><span id="flag"></span><select id="lang" data-t-aria="Language" aria-label="Language"></select></span><button id="openBtn" class="icon" data-t-title="Browse for an image or STL" title="Browse for an image or STL" aria-label="Browse for an image or STL"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 11v5M9.5 13.5 12 11l2.5 2.5"/></svg></button></span></h1>
+      <div id="srcName">No file loaded</div>
+      <input type="file" id="file" accept="image/*,.stl" hidden>
+    </div>
+
+    <div class="scroll" id="controls"></div>
+  </aside>
+
+  <main>
+    <div class="toolbar" hidden>
+      <div class="steps" id="steps">
+        <button data-step="0" id="step0" data-t="Image">Image</button>
+        <button data-step="1" class="on" data-t="Object">Object</button>
+        <button data-step="2" data-t="Template">Template</button>
+        <button data-step="3" data-t="Mold">Mold</button>
+      </div>
+      <div class="spacer"></div>
+      <label id="paintWrap" hidden><input type="checkbox" id="paint"> <span data-t="Show colours">Show colours</span></label>
+      <div class="tools" id="tools" hidden>
+        <label class="size" data-t-title="Brush size" title="Brush size"><span class="dot"><i id="sizeDot"></i></span><input type="range" id="edSize" min="4" max="80" value="24" data-t-aria="Brush size" aria-label="Brush size"></label>
+        <button class="ghost icon" id="edUndo" data-t-title="Undo last stroke" title="Undo last stroke" aria-label="Undo last stroke"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+        <button class="ghost icon" id="edClear" data-t-title="Reset outline" title="Reset outline" aria-label="Reset outline"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></button>
+      </div>
+      <button id="fit" data-t="Reset view">Reset view</button>
+    </div>
+    <div id="view"><div id="status" hidden>Ready</div>
+      <div id="empty">
+        <div class="dropzone" id="drop">
+          <b data-t="Drop an image or STL here">Drop an image or STL here</b>
+          <span data-t="or click to choose a file">or click to choose a file</span>
+          <span class="demos"><span data-t="Or try a demo:">Or try a demo:</span> <button id="demo" data-t="Image">Image</button><button id="demoStl">STL</button></span>
+        </div>
+      </div>
+      <div id="editor" hidden>
+        <div id="edWrap"><canvas id="edCanvas"></canvas><div id="edCursor"></div><div id="edLoading" hidden data-t-aria="Working out the outline" aria-label="Working out the outline"></div></div>
+      </div>
+    </div>
+    <div class="caption" hidden><div id="caption"></div>
+      <button class="primary" id="dl" hidden></button>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

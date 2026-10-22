@@ -1,0 +1,134 @@
+// Building the object, the printed template and the silicone mold from a height map.
+import { t } from './i18n.js';
+import { blur, signedDist, fillHoles, smoothstep, neighbours } from './grid.js';
+import { meshSolid } from './mesh.js';
+
+export function spreadColours(colors, mask, W, H) {
+  const has = Uint8Array.from(mask);
+  for (let pass = 0; pass < 6; pass++) {
+    const add = [];
+    for (let k = 0; k < W * H; k++) {
+      if (has[k]) continue;
+      for (const q of neighbours(k, W, H)) if (q >= 0 && has[q]) { add.push(k, q); break; }
+    }
+    for (let i = 0; i < add.length; i += 2) { colors.set(colors.subarray(add[i + 1] * 3, add[i + 1] * 3 + 3), add[i] * 3); has[add[i]] = 1; }
+  }
+  return colors;
+}
+export function buildModel(hf, p) {
+  const res = hf.res, B = p.baseT, T = p.backT;
+  const border = p.border, gap = p.gap, wallT = p.wallT, over = p.over;
+  const pad = Math.ceil((border + gap + wallT + 1.5) / res) + 3;
+  const W = hf.W + 2 * pad, H = hf.H + 2 * pad, N = W * H;
+  const mask = new Uint8Array(N);
+  let relief = new Float32Array(N), lines = new Float32Array(N);
+  const colors = hf.px ? new Uint8Array(N * 3) : null; // image colours, for the optional painted preview
+  for (let j = 0; j < hf.H; j++) {
+    for (let i = 0; i < hf.W; i++) {
+      const k = (j + pad) * W + i + pad;
+      mask[k] = hf.mask[j * hf.W + i]; relief[k] = hf.relief[j * hf.W + i];
+      if (hf.lines) lines[k] = hf.lines[j * hf.W + i];
+      if (hf.px) for (let c = 0; c < 3; c++) colors[k * 3 + c] = hf.px[(j * hf.W + i) * 4 + c];
+    }
+  }
+  let any = false;
+  for (let k = 0; k < N; k++) if (mask[k]) { any = true; break; }
+  if (!any) throw new Error(t('No shape found — try another background tolerance.'));
+
+  // an STL's edge is a wall, not a slope down to zero: carry the edge height outward so the
+  // outline's top edge doesn't zigzag between the wall height and zero
+  if (hf.kind === 'stl') {
+    const has = Uint8Array.from(mask);
+    for (let pass = 0; pass < 4; pass++) {
+      const add = [];
+      for (let k = 0; k < N; k++) {
+        if (has[k]) continue;
+        let sum = 0, n = 0;
+        for (const q of neighbours(k, W, H)) if (q >= 0 && has[q]) { sum += relief[q]; n++; }
+        if (n) add.push(k, sum / n);
+      }
+      for (let i = 0; i < add.length; i += 2) { relief[add[i]] = add[i + 1]; has[add[i]] = 1; }
+    }
+  }
+  let sdf = signedDist(mask, W, H);
+  for (let k = 0; k < N; k++) sdf[k] *= res;
+  if (p.maskSmooth > 0) sdf = blur(sdf, W, H, p.maskSmooth / res);
+
+  if (p.reliefSmooth > 0) { // blur only inside the shape so the background doesn't bleed in
+    const m = new Float32Array(N);
+    for (let k = 0; k < N; k++) m[k] = mask[k];
+    const bm = blur(m, W, H, p.reliefSmooth / res), br = blur(relief, W, H, p.reliefSmooth / res);
+    for (let k = 0; k < N; k++) relief[k] = mask[k] && bm[k] > 1e-3 ? br[k] / bm[k] : 0;
+  }
+  if (hf.kind === 'image' && !hf.cartoon && p.edgeSoft > 0) {
+    for (let k = 0; k < N; k++) relief[k] *= smoothstep(0, p.edgeSoft, sdf[k]);
+  }
+  if (hf.kind === 'image' && !hf.cartoon && p.puff > 0) { // quarter-circle profile rising from the outline
+    const R = Math.max(2, p.puff * 2.5);
+    for (let k = 0; k < N; k++) {
+      if (sdf[k] <= 0) continue;
+      const u = 1 - Math.min(1, sdf[k] / R);
+      relief[k] += p.puff * Math.sqrt(1 - u * u);
+    }
+  }
+  if (hf.kind === 'image' && p.lineDepth > 0) {
+    const bl = blur(lines, W, H, Math.max(0.6, 0.15 / res));
+    for (let k = 0; k < N; k++) if (mask[k]) relief[k] -= p.lineDepth * bl[k];
+  }
+
+  const sdfPlaque = new Float32Array(N), sdfCav = new Float32Array(N), sdfOut = new Float32Array(N);
+  const ring = new Float32Array(N), gapRing = new Float32Array(N);
+  const objTop = new Float32Array(N), posTop = new Float32Array(N);
+  let maxTop = 0;
+  for (let k = 0; k < N; k++) {
+    sdfPlaque[k] = sdf[k] + border + 1e-4;
+    sdfCav[k] = sdfPlaque[k] + gap;
+  }
+  // Openings in the object wider than the gap (between legs, beside a face) would otherwise get walls of their
+  // own. The wall only follows the outside; enclosed openings are filled with silicone, which keeps them open in the cast.
+  const cav = new Uint8Array(N);
+  for (let k = 0; k < N; k++) cav[k] = sdfCav[k] > 0 ? 1 : 0;
+  const filled = Uint8Array.from(cav);
+  fillHoles(filled, W, H);
+  for (let k = 0; k < N; k++) if (filled[k] && !cav[k]) sdfCav[k] = Math.max(-sdfCav[k], 0.05);
+  for (let k = 0; k < N; k++) {
+    sdfOut[k] = sdfCav[k] + wallT;
+    ring[k] = Math.min(sdfOut[k], -sdfCav[k]);
+    gapRing[k] = Math.min(sdfCav[k], -sdfPlaque[k]);
+    objTop[k] = Math.max(T + relief[k], 0.3);
+    posTop[k] = objTop[k] + B;
+    if (sdfPlaque[k] > 0 && objTop[k] > maxTop) maxTop = objTop[k];
+  }
+  const Ztop = B + maxTop + over;
+  const G = { W, H, res, ox: -(W - 1) * res / 2, oy: (H - 1) * res / 2 };
+
+  const geo = {
+    object: meshSolid(G, sdfPlaque, 0, objTop),
+    base: meshSolid(G, sdfOut, 0, B),
+    wall: meshSolid(G, ring, B - 0.05, Ztop),
+    positive: meshSolid(G, sdfPlaque, B - 0.05, posTop),
+    silOver: meshSolid(G, sdfPlaque, posTop, Ztop),
+    silGap: meshSolid(G, gapRing, B, Ztop),
+  };
+
+  // numbers
+  let cast = 0, sil = 0;
+  const bb = (s) => ({ x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity, s });
+  const bo = bb(sdfPlaque), bt = bb(sdfOut), bc = bb(sdfCav);
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const k = j * W + i;
+      if (sdfPlaque[k] > 0) { cast += objTop[k]; sil += Ztop - posTop[k]; }
+      else if (sdfCav[k] > 0) sil += Ztop - B;
+      for (const b of [bo, bt, bc]) if (b.s[k] > 0) {
+        if (i < b.x0) b.x0 = i; if (i > b.x1) b.x1 = i; if (j < b.y0) b.y0 = j; if (j > b.y1) b.y1 = j;
+      }
+    }
+  }
+  const a = res * res / 1000;
+  const dims = (b) => [(b.x1 - b.x0 + 1) * res, (b.y1 - b.y0 + 1) * res];
+  return {
+    G, geo, B, Ztop, maxTop, res, p, colors: colors && spreadColours(colors, mask, W, H),
+    stats: { castMl: cast * a, silMl: sil * a, obj: dims(bo), tpl: dims(bt), sil: dims(bc), objH: maxTop, tplH: Ztop },
+  };
+}
