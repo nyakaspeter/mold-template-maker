@@ -94,7 +94,8 @@ function snapshot() {
 }
 function edited() { S.editUsed = true; S.editDirty = true; drawEditor(); }
 
-export function initEditor() {
+// rebuild: recalculates the outline (after undo and reset, the last build's outline may hold painting that is gone)
+export function initEditor(rebuild) {
   const cv = $('#edCanvas');
   cv.addEventListener('pointerdown', (e) => {
     if (!E.fit) return;
@@ -119,13 +120,15 @@ export function initEditor() {
     if (!prev || !S.edit) return;
     S.edit.add.getContext('2d').putImageData(prev[0], 0, 0);
     S.edit.cut.getContext('2d').putImageData(prev[1], 0, 0);
-    edited();
+    S.editUsed = true; S.editDirty = false;
+    rebuild();
   };
   $('#edClear').onclick = () => {
     if (!S.edit) return;
     E.undo.push(snapshot());
     for (const c of [S.edit.add, S.edit.cut]) c.getContext('2d').clearRect(0, 0, c.width, c.height);
-    edited();
+    S.editUsed = false; S.editDirty = false; // back to the outline as detected
+    rebuild();
   };
   new ResizeObserver(() => { if (!$('#editor').hidden) drawEditor(); }).observe($('#edWrap'));
 }

@@ -161,7 +161,7 @@ applyLang();
 for (const d of PARAMS) if (d.id) setParam(d.id, kept(d) ? savedValue(d, 'image') : d.val);
 showFor('image');
 updateCaption();
-initEditor();
+initEditor(() => schedule(0));
 
 const file = $('#file');
 $('#drop').onclick = (e) => { if (!e.target.closest('button')) file.click(); };
