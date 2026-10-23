@@ -119,16 +119,20 @@ export function buildModel(hf, p) {
       if (!best) break;
       vents.push(best); taken.push(best);
     }
-    const sdfLid = new Float32Array(N);
+    // Printed face down, with pegs and the lip facing up. Once flipped for use, the
+    // lip sits outside the silicone perimeter; the flat surface still seats at height B.
+    const clearance = 0.4, lipWall = 1.2, lipDepth = 3, taper = 0.4;
+    const sdfLid = new Float32Array(N), lidTop = new Float32Array(N);
     for (let k = 0; k < N; k++) {
       const x = G.ox + (k % W) * res, y = G.oy - ((k / W) | 0) * res;
-      let s = sdfCav[k];
+      let s = sdfCav[k] + clearance + lipWall;
+      lidTop[k] = B + lipDepth * Math.min(1, Math.max(0, (-sdfCav[k] - clearance) / taper));
       for (const [a, b] of vents) s = Math.min(s, Math.hypot(x - a, y - b) - ventR);
       sdfLid[k] = s;
     }
     // printed pegs up; it is turned over onto the mold the same way the mold was turned over
     lid = {
-      plate: meshSolid(G, sdfLid, 0, B),
+      plate: meshSolid(G, sdfLid, 0, lidTop),
       pegs: joinMeshes(pins.map((q) => [cylinder(q.x, q.y, q.r, B - 0.05, B + q.d)])),
     };
   }

@@ -18,6 +18,7 @@ export const I18N = {
     'How many small pins line the halves up when gluing (0 for none), spread evenly over the cut. A printed lid with pegs, laid on the filled mold, forms their holes; the lids and pins are printed with the templates.':
       'Wie viele kleine Stifte die Hälften beim Kleben ausrichten (0 für keine), gleichmäßig über die Schnittfläche verteilt. Ein gedruckter Deckel mit Zapfen, auf die gefüllte Form gelegt, formt ihre Löcher; Deckel und Stifte werden mit den Vorlagen gedruckt.',
     'Pin diameter': 'Stiftdurchmesser',
+    'Thicker pins are spaced farther apart, so fewer may fit than the number requested.': 'Dickere Stifte werden weiter auseinander platziert. Daher passen möglicherweise weniger als die gewünschte Anzahl.',
     'Picture type': 'Bildart', 'Auto': 'Automatisch', 'Auto ({type})': 'Automatisch ({type})',
     'Height map': 'Höhenkarte', 'Line art / sketch': 'Strichzeichnung / Skizze', 'Flat cartoon': 'Flacher Cartoon',
     'Shaded render / painting': 'Schattiertes Rendering / Gemälde',
@@ -101,6 +102,7 @@ export const I18N = {
     'How many small pins line the halves up when gluing (0 for none), spread evenly over the cut. A printed lid with pegs, laid on the filled mold, forms their holes; the lids and pins are printed with the templates.':
       'Hány kis csap igazítsa a feleket ragasztáskor (0: egy sem), egyenletesen elosztva a vágási felületen. A lyukaikat egy nyomtatott, csapos fedő formázza, amit a kitöltött formára teszel; a fedők és a csapok a sablonokkal együtt nyomtatódnak.',
     'Pin diameter': 'Csap átmérője',
+    'Thicker pins are spaced farther apart, so fewer may fit than the number requested.': 'A vastagabb csapok távolabb kerülnek egymástól, ezért a megadottnál kevesebb férhet el.',
     'Picture type': 'Kép típusa', 'Auto': 'Automatikus', 'Auto ({type})': 'Automatikus ({type})',
     'Height map': 'Magasságtérkép', 'Line art / sketch': 'Vonalrajz / vázlat', 'Flat cartoon': 'Sima színezésű rajz',
     'Shaded render / painting': 'Árnyalt render / festmény',

@@ -15,7 +15,9 @@ For an STL or 3MF, the app finds a flat back and puts it down. One without a fla
 back, where the object is widest): each gets its own mold, and the cast halves are glued together. The halves are cut
 from the model itself with [manifold-3d](https://github.com/elalish/manifold), so the model must be watertight.
 Optional alignment pins line them up: a printed lid with pegs, laid on the filled mold, forms matching holes in both
-halves, and the pins are printed with the templates.
+halves, and the pins are printed with the templates. Lids include a locating lip:
+3 mm deep, 1.2 mm wall, with 0.4 mm clearance and a tapered entrance around the silicone.
+The lid plate shares the Base thickness setting (2 mm by default).
 
 3MF imports combine printable build objects with their component transforms and convert model units to millimetres.
 External component meshes in Bambu Studio and OrcaSlicer projects are supported.
