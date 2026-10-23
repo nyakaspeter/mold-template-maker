@@ -1,7 +1,8 @@
 // Exact STL halves: the model itself is cut, so nothing under an overhang is filled in (a height map can't curve
 // back under itself). The cast half, the printed positive and the silicone are made with 3D booleans
 // (manifold-3d, WebAssembly, loaded the first time a model is cut). The template's walls, base and lids only follow
-// the outline and stay as they are. Only a closed, watertight model can be cut.
+// the outline. Each printed template and lid is fused into one solid for STL splitting.
+// Only a closed, watertight model can be cut.
 import { t } from './i18n.js';
 import { originalMesh } from './stl.js';
 import { outlineLoops } from './mesh.js';
@@ -69,7 +70,17 @@ export async function exactHalves(geom, p, models) {
       const positive = k(body.translate([0, 0, B - 0.05]));
       const silicone = k(k(prism(w, G, M.sdfCav, B, Ztop)).subtract(positive));
       M.geo.object = triangles(object);
-      M.geo.positive = triangles(positive);
+      // STL has no object hierarchy: slicers split connected shells. Fuse each physical
+      // printed part so base/walls/positive and lid/pegs do not split into separate objects.
+      const template = k(w.Manifold.union([k(solid(w, M.geo.base)), k(solid(w, M.geo.wall)), positive]));
+      M.geo.base = triangles(template);
+      M.geo.wall = { P: new Float32Array(0), N: new Float32Array(0) };
+      M.geo.positive = { P: new Float32Array(0), N: new Float32Array(0) };
+      if (M.lid) {
+        const lid = k(w.Manifold.union([k(solid(w, M.lid.plate)), k(solid(w, M.lid.pegs))]));
+        M.lid.plate = triangles(lid);
+        M.lid.pegs = { P: new Float32Array(0), N: new Float32Array(0) };
+      }
       M.geo.silOver = triangles(silicone);
       M.geo.silGap = { P: new Float32Array(0), N: new Float32Array(0) };
       M.stats.castMl = object.volume() / 1000;

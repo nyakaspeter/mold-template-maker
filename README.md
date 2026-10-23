@@ -17,7 +17,8 @@ from the model itself with [manifold-3d](https://github.com/elalish/manifold), s
 Optional alignment pins line them up: a printed lid with pegs, laid on the filled mold, forms matching holes in both
 halves, and the pins are printed with the templates. Lids include a locating lip:
 3 mm deep, 1.2 mm wall, with 0.4 mm clearance and a tapered entrance around the silicone.
-The lid plate shares the Base thickness setting (2 mm by default).
+The lid plate shares the Base thickness setting (2 mm by default). Each half-template and lid is fused into
+one solid, so a slicer’s Split to objects keeps each template, lid and loose pin intact.
 
 3MF imports combine printable build objects with their component transforms and convert model units to millimetres.
 External component meshes in Bambu Studio and OrcaSlicer projects are supported.
