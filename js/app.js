@@ -1,4 +1,5 @@
 // The app: loading files, the stages and bottom bar, rebuilding the model, and the page's languages.
+import { parse3MF } from './three-mf.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { $ } from './dom.js';
 import { S } from './state.js';
@@ -137,8 +138,9 @@ function loadSource(kind, data, name) {
 async function loadFile(file) {
   if (!file) return;
   try {
-    if (/\.stl$/i.test(file.name)) {
-      const geom = new STLLoader().parse(await file.arrayBuffer());
+    if (/\.(stl|3mf)$/i.test(file.name)) {
+      const data = await file.arrayBuffer();
+      const geom = /\.3mf$/i.test(file.name) ? parse3MF(data) : new STLLoader().parse(data);
       loadSource('stl', geom.index ? geom.toNonIndexed() : geom, file.name);
     } else {
       const bmp = await createImageBitmap(file);
@@ -149,7 +151,7 @@ async function loadFile(file) {
 
 // ---------------------------------------------------------------- building
 function status(msg, err = false) {
-  const s = $('#status'); s.textContent = msg; s.classList.toggle('err', err);
+  const s = $('#status'); s.hidden = false; s.textContent = msg; s.classList.toggle('err', err);
 }
 let timer = null, gen = 0;
 function schedule(delay = 220) {

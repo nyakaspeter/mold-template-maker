@@ -6,8 +6,8 @@ export const I18N = {
       'Ziehe das Modell, um es zu drehen; es rastet in Vierteldrehungen ein. Automatisch legt eine flache Rückseite nach unten; hat das Objekt keine, wird es so hingelegt, dass es in eine vordere und hintere Hälfte geschnitten wird.',
     'Back to Auto': 'Zurück zu Automatisch',
     'Yes': 'Ja', 'No': 'Nein',
-    'This STL has holes or loose surfaces, so it can\'t be cut into halves. Repair it (e.g. in your slicer) and load it again, or set “Cut into two halves” to No.':
-      'Diese STL hat Löcher oder lose Flächen und kann daher nicht in Hälften geschnitten werden. Repariere sie (z. B. im Slicer) und lade sie erneut, oder stelle „In zwei Hälften schneiden“ auf Nein.',
+    'This model has holes or loose surfaces, so it can\'t be cut into halves. Repair it (e.g. in your slicer) and load it again, or set “Cut into two halves” to No.':
+      'Dieses Modell hat Löcher oder lose Flächen und kann daher nicht in Hälften geschnitten werden. Repariere es (z. B. im Slicer) und lade es erneut, oder stelle „In zwei Hälften schneiden“ auf Nein.',
     'Cut into two halves': 'In zwei Hälften schneiden',
     'For objects that aren\'t flat on the back: cuts the object across, makes a mold for each half, and you glue the cast halves together. The cut is level with the ground of the Orientation view; turn the model there to cut it another way.':
       'Für Objekte ohne flache Rückseite: schneidet das Objekt quer durch, macht für jede Hälfte eine Form, und du klebst die gegossenen Hälften zusammen. Der Schnitt liegt waagerecht in der Ausrichtungs-Ansicht; drehe das Modell dort, um es anders zu schneiden.',
@@ -64,11 +64,11 @@ export const I18N = {
     'Gap (= silicone rim width)': 'Spalt (= Breite des Silikonrands)', 'Silicone above highest point': 'Silikon über dem höchsten Punkt',
     'Wall thickness': 'Wandstärke', 'Base thickness': 'Bodenstärke',
     'Reset to default': 'Auf Standard zurücksetzen', 'Reset {label}': '{label} zurücksetzen',
-    'Browse for an image or STL': 'Bild oder STL auswählen', 'No file loaded': 'Keine Datei geladen', 'Language': 'Sprache',
+    'Browse for an image, STL or 3MF': 'Bild, STL oder 3MF auswählen', 'No file loaded': 'Keine Datei geladen', 'Language': 'Sprache',
     'Image': 'Bild', 'Object': 'Objekt', 'Template': 'Vorlage', 'Mold': 'Form',
     'Show colours': 'Farben anzeigen', 'Reset view': 'Ansicht zurücksetzen',
     'Brush size': 'Pinselgröße', 'Undo last stroke': 'Letzten Strich rückgängig machen', 'Reset outline': 'Umriss zurücksetzen',
-    'Drop an image or STL here': 'Bild oder STL hier ablegen', 'or click to choose a file': 'oder klicken, um eine Datei auszuwählen',
+    'Drop an image, STL or 3MF here': 'Bild, STL oder 3MF hier ablegen', 'or click to choose a file': 'oder klicken, um eine Datei auszuwählen',
     'Or try a demo:': 'Oder eine Demo ausprobieren:', 'Upside down': 'Kopfüber', 'Heart': 'Herz', 'Owl': 'Eule', 'Medallion': 'Medaillon', 'Duck': 'Ente', 'Drop to load': 'Zum Laden loslassen', 'Working out the outline': 'Umriss wird ermittelt',
     'Darkened parts are left out. Paint to light up what belongs to the object; hold {shift} while painting to darken what doesn\'t. Applied when you switch stage.':
       'Abgedunkelte Teile werden weggelassen. Male, um aufzuhellen, was zum Objekt gehört; halte beim Malen {shift} gedrückt, um abzudunkeln, was nicht dazugehört. Wird beim Wechseln der Ansicht übernommen.',
@@ -89,8 +89,8 @@ export const I18N = {
       'Húzd a modellt a forgatáshoz; negyedfordulatokra ugrik. Az automatikus a lapos hátoldalt teszi alulra; ha a tárgynak nincs ilyen, úgy fekteti le, hogy elülső és hátsó félre vágja.',
     'Back to Auto': 'Vissza az automatikusra',
     'Yes': 'Igen', 'No': 'Nem',
-    'This STL has holes or loose surfaces, so it can\'t be cut into halves. Repair it (e.g. in your slicer) and load it again, or set “Cut into two halves” to No.':
-      'Ez az STL lyukas vagy laza felületeket tartalmaz, ezért nem vágható ketté. Javítsd ki (pl. a szeletelőben), és töltsd be újra, vagy állítsd a „Kettévágás” beállítást Nem-re.',
+    'This model has holes or loose surfaces, so it can\'t be cut into halves. Repair it (e.g. in your slicer) and load it again, or set “Cut into two halves” to No.':
+      'Ez a modell lyukas vagy laza felületeket tartalmaz, ezért nem vágható ketté. Javítsd ki (pl. a szeletelőben), és töltsd be újra, vagy állítsd a „Kettévágás” beállítást Nem-re.',
     'Cut into two halves': 'Kettévágás',
     'For objects that aren\'t flat on the back: cuts the object across, makes a mold for each half, and you glue the cast halves together. The cut is level with the ground of the Orientation view; turn the model there to cut it another way.':
       'Nem lapos hátú tárgyakhoz: keresztben kettévágja a tárgyat, mindkét félhez készít öntőformát, a kiöntött feleket pedig összeragasztod. A vágás vízszintes a Tájolás nézetben; ott forgasd el a modellt, ha másképp szeretnéd vágni.',
@@ -147,11 +147,11 @@ export const I18N = {
     'Gap (= silicone rim width)': 'Rés (= a szilikonperem szélessége)', 'Silicone above highest point': 'Szilikon a legmagasabb pont felett',
     'Wall thickness': 'Falvastagság', 'Base thickness': 'Alapvastagság',
     'Reset to default': 'Alapértékre állítás', 'Reset {label}': '{label} alapértékre állítása',
-    'Browse for an image or STL': 'Kép vagy STL tallózása', 'No file loaded': 'Nincs betöltött fájl', 'Language': 'Nyelv',
+    'Browse for an image, STL or 3MF': 'Kép, STL vagy 3MF tallózása', 'No file loaded': 'Nincs betöltött fájl', 'Language': 'Nyelv',
     'Image': 'Kép', 'Object': 'Tárgy', 'Template': 'Sablon', 'Mold': 'Öntőforma',
     'Show colours': 'Színek mutatása', 'Reset view': 'Nézet visszaállítása',
     'Brush size': 'Ecsetméret', 'Undo last stroke': 'Utolsó vonás visszavonása', 'Reset outline': 'Körvonal visszaállítása',
-    'Drop an image or STL here': 'Húzz ide egy képet vagy STL-t', 'or click to choose a file': 'vagy kattints egy fájl kiválasztásához',
+    'Drop an image, STL or 3MF here': 'Húzz ide egy képet, STL-t vagy 3MF-et', 'or click to choose a file': 'vagy kattints egy fájl kiválasztásához',
     'Or try a demo:': 'Vagy próbálj ki egy demót:', 'Upside down': 'Fejjel lefelé', 'Heart': 'Szív', 'Owl': 'Bagoly', 'Medallion': 'Medál', 'Duck': 'Kacsa', 'Drop to load': 'Engedd el a betöltéshez', 'Working out the outline': 'A körvonal meghatározása',
     'Darkened parts are left out. Paint to light up what belongs to the object; hold {shift} while painting to darken what doesn\'t. Applied when you switch stage.':
       'A sötétített részek kimaradnak. Fess rá, hogy kivilágítsd, ami a tárgyhoz tartozik; festés közben tartsd lenyomva a {shift} billentyűt, hogy elsötétítsd, ami nem. Nézetváltáskor lép érvénybe.',
