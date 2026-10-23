@@ -6,16 +6,14 @@ import { S } from './state.js';
 import { t, getLang, setLang, LANGS, FLAGS } from './i18n.js';
 import { PARAMS, DEFAULTS, kept, perKind, savedValue, buildControls, setParam, readParams, showFor } from './settings.js';
 import { STYLE_PRESETS, analyzeImage } from './style.js';
-import { hfFromImage } from './relief.js';
-import { hfFromSTL, halvesFromSTL, bestCut, detectSTL, originalMesh } from './stl.js';
-import { buildModel, buildHalves } from './model.js';
-import { exactHalves } from './exact.js';
-import { aiDepth } from './depth.js';
+import { detectSTL } from './stl.js';
+import { buildInWorker } from './build-client.js?v=3';
 import { M, showModel, fitView, requestFit, showStage, setPainted, setUpsideDown, exportStage, camera, controls } from './viewer.js';
 import { initEditor, resetEditor, setEditorOutline, drawEditor } from './editor.js';
 import { attachOrient, setOrientModel, showOrient, dropOrient } from './orient.js';
 
 const view = $('#view');
+let sourceId = 0;
 let step = 1; // 0 image, 1 object, 2 template, 3 mold
 
 // ---------------------------------------------------------------- stages and bottom bar
@@ -84,7 +82,7 @@ function stlChoice(p) {
 // for STLs the "method" is whether it is cut into halves, with or without pins: it decides which settings show
 const stlMethod = (p) => (stlChoice(p).split ? (p.pins ? 'split-pins' : 'split') : 'whole');
 // any setting changed: a new picture type first applies its method and settings
-function settingChanged() {
+function settingChanged(id) {
   const p = readParams();
   if (S.kind === 'image' && p.picType !== S.picType) {
     S.picType = p.picType;
@@ -92,6 +90,8 @@ function settingChanged() {
     showFor();
   }
   if (S.kind === 'stl') {
+    // A manual cut chosen during the first background build takes precedence over Auto.
+    if (id === 'splitAt') S.splitKey = `${p.scale}|${stlChoice(p).up}`;
     autoLabel(); // "Auto (Yes)" can change with the up side
     showOrient(stlChoice(p).up); // e.g. back to Auto's side after the reset
     if (stlMethod(p) !== S.method) { S.method = stlMethod(p); showFor(); }
@@ -101,8 +101,9 @@ function settingChanged() {
 
 // ---------------------------------------------------------------- loading files
 function loadSource(kind, data, name) {
+  sourceId++;
   const prevKind = S.kind;
-  S.kind = kind; S.name = name; S.ai = null; S.aiFailed = false;
+  S.kind = kind; S.name = name;
   if (kind === 'image') { S.img = data; S.geom = null; } else { S.geom = data; S.img = null; }
   // every new file starts with fresh settings where marked (how it is read and shaped); others keep your values,
   // except where images and STLs need different ones and the file type changed
@@ -156,50 +157,60 @@ function status(msg, err = false) {
 let timer = null, gen = 0;
 function schedule(delay = 220) {
   clearTimeout(timer);
-  if (S.kind) { status(t('Updating…')); S.building = true; if (step === 0) drawEditor(); }
-  timer = setTimeout(regen, delay);
-}
-async function regen() {
+  const my = ++gen; // invalidate older results as soon as a committed setting changes
   if (!S.kind) return;
-  const my = ++gen, p = readParams();
+  status(t('Building model…')); S.building = true;
+  if (step === 0) drawEditor();
+  const p = readParams(); // snapshot committed settings; later slider drags are only previews
+  timer = setTimeout(() => regen(my, p), delay);
+}
+async function regen(my, p) {
+  if (my !== gen || !S.kind) return;
+  const kind = S.kind, source = sourceId;
   p.depthMode = S.method;
+  const split = kind === 'stl' && stlChoice(p).split;
+  if (kind === 'stl') p.stlUp = stlChoice(p).up;
+  if (split) { p.backT = 0; p.border = 0; }
+  const splitKey = `${p.scale}|${p.stlUp}`;
+  const autoCut = split && S.splitKey !== splitKey;
+  const notFlat = kind === 'stl' && (split || !S.stlAuto.flats.includes(p.stlUp.split(':')[0]));
+  let img = null, edit = null;
+  const bitmaps = [];
+  const snapshot = async (canvas) => {
+    const bitmap = await createImageBitmap(canvas);
+    bitmaps.push(bitmap); return bitmap;
+  };
   try {
-    const wantAI = S.kind === 'image' && S.method !== 'bright'; // the depth model is downloaded once, then cached
-    if (wantAI && (!S.ai || S.aiModel !== p.depthModel) && !S.aiFailed) {
-      try { S.ai = await aiDepth(S.img, status, p.depthModel); S.aiModel = p.depthModel; }
-      catch (e) { S.aiFailed = true; console.error(e); status(t('AI depth failed — continuing without it. ') + e.message, true); }
-      if (my !== gen) return;
+    // Canvas edit layers cannot be cloned to a worker; take immutable bitmap snapshots.
+    if (kind === 'image') {
+      img = await snapshot(S.img);
+      if (S.editUsed && S.edit) {
+        edit = { add: await snapshot(S.edit.add), cut: await snapshot(S.edit.cut) };
+      }
     }
-    await new Promise((r) => setTimeout(r, 30)); // let the status text paint first
     if (my !== gen) return;
-    const t0 = performance.now();
-    const split = S.kind === 'stl' && stlChoice(p).split;
-    if (S.kind === 'stl') p.stlUp = stlChoice(p).up;
-    if (split) { p.backT = 0; p.border = 0; } // hidden for halves: they'd end up in the glued seam
-    // the cut starts where each half stays in one piece and the object is widest; worked out again when the file
-    // or its up direction changes
-    if (split && S.splitKey !== `${p.scale}|${p.stlUp}`) {
-      S.splitKey = `${p.scale}|${p.stlUp}`;
-      p.splitAt = bestCut(S.geom, p); S.auto = { splitAt: p.splitAt }; setParam('splitAt', p.splitAt);
-    }
-    const hf = S.kind === 'image' ? hfFromImage(S.img, wantAI ? S.ai : null, p, S.editUsed ? S.edit : null)
-      : split ? halvesFromSTL(S.geom, p) : hfFromSTL(S.geom, p);
+    const result = await buildInWorker({ source, kind, img, edit, p, split, notFlat, autoCut, lang: getLang(),
+      positions: kind === 'stl' ? S.geom.attributes.position.array : null },
+    (message) => { if (my === gen) status(message); });
+    if (!result || my !== gen) return;
     S.building = false;
-    if (S.kind === 'image') setEditorOutline(hf);
-    let model;
-    if (split) {
-      const halves = hf.map((h) => buildModel(h, p));
-      await exactHalves(S.geom, p, halves); // the model itself cut in two, rather than height maps
-      if (my !== gen) return;
-      model = buildHalves(halves, p);
-    } else model = buildModel(hf, p);
-    model.notFlat = S.kind === 'stl' && (split || !S.stlAuto.flats.includes(p.stlUp.split(':')[0]));
-    // an STL without a flat back that isn't cut: the Object stage shows the model as it is
-    if (model.notFlat && !split) model.geo.object = originalMesh(S.geom, p);
+    if (result.splitAt !== null) {
+      S.splitKey = splitKey; S.auto = { splitAt: result.splitAt };
+      if (+$('#p-splitAt').value === p.splitAt) setParam('splitAt', result.splitAt);
+    }
+    if (result.outline) setEditorOutline(result.outline);
+    const model = result.model;
     showModel(model, $('#paint').checked, model.notFlat && $('#flipObj').checked);
     setStep(step);
-    if (!(S.aiFailed && wantAI)) status(t('Built in {ms} ms', { ms: Math.round(performance.now() - t0) }));
-  } catch (e) { console.error(e); status(e.message, true); S.building = false; if (step === 0) drawEditor(); }
+    status(result.warning || t('Built in {ms} ms', { ms: result.elapsed }), !!result.warning);
+  } catch (e) {
+    if (my !== gen) return;
+    console.error(e); status(e.message, true); S.building = false;
+    if (step === 0) drawEditor();
+  } finally {
+    // Transferred bitmaps are detached here; close any snapshots that never reached the worker.
+    for (const bitmap of bitmaps) bitmap.close();
+  }
 }
 
 // ---------------------------------------------------------------- languages

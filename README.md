@@ -21,6 +21,10 @@ halves, and the pins are printed with the templates.
 External component meshes in Bambu Studio and OrcaSlicer projects are supported.
 Colours, textures and slicer settings are not used; downloads remain STL.
 
+Model generation and AI depth estimation run in a background worker, so the current model stays interactive
+while an update builds. Sliders preview their values while dragging and rebuild on release; pending updates
+use the latest committed settings.
+
 Available in English, German and Hungarian.
 
 Everything runs in the browser; files are never uploaded. The 3D view uses [three.js](https://threejs.org), flat parts
@@ -47,6 +51,7 @@ then open <http://localhost:8765>.
 
 - `index.html`, `styles.css` – the page
 - `js/app.js` – entry point: loading files, stages, rebuilding, languages
+- `js/build-client.js`, `js/build-worker.js` – queued background builds and AI depth estimation
 - `js/settings.js`, `js/i18n.js`, `js/state.js` – settings panel, translations, shared state
 - `js/style.js`, `js/outline.js`, `js/relief.js`, `js/stl.js`, `js/depth.js` – image and STL → height map
 - `js/three-mf.js` – 3MF build → triangle mesh

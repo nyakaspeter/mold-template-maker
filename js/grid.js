@@ -87,7 +87,8 @@ export function fitGrid(wMM, hMM, res) {
 }
 
 export function sampleImage(img, rect, W, H) {
-  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const c = typeof document === 'undefined' ? new OffscreenCanvas(W, H) : document.createElement('canvas');
+  c.width = W; c.height = H;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, W, H);

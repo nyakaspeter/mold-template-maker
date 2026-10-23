@@ -1,5 +1,5 @@
 // Turning a region of the grid into a closed, printable mesh.
-import earcut from 'earcut';
+import earcut from 'https://cdn.jsdelivr.net/npm/earcut@3.2.4/src/earcut.js';
 
 // A solid = region where sdf > 0, between a bottom and a top height (number or per-cell array).
 // Marching squares on the outline, so edges are smooth and the shell is closed.

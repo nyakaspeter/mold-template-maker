@@ -17,7 +17,8 @@ let gpuP = null, tfP = null;
 const hasGPU = () => (gpuP ||= (async () => {
   try { return !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) { return false; }
 })());
-const lib = () => (tfP ||= import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1'));
+const lib = () => (tfP ||= import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.1')
+  .catch((error) => { tfP = null; throw error; }));
 
 function estimator(key, gpu, onStatus) {
   if (!estimators[key]) {
@@ -40,7 +41,8 @@ function estimator(key, gpu, onStatus) {
 async function runAt(tf, model, img, short, w, h) {
   const s = short / Math.min(img.width, img.height);
   const iw = Math.max(14, Math.round(img.width * s / 14) * 14), ih = Math.max(14, Math.round(img.height * s / 14) * 14);
-  const c = document.createElement('canvas'); c.width = iw; c.height = ih;
+  const c = typeof document === 'undefined' ? new OffscreenCanvas(iw, ih) : document.createElement('canvas');
+  c.width = iw; c.height = ih;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, iw, ih);
   ctx.imageSmoothingQuality = 'high';

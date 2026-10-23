@@ -129,7 +129,7 @@ export function buildControls(onChange) {
       el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span><span class="val">
         <button class="reset" title="${t('Back to Auto')}" aria-label="${t('Back to Auto')}">↺</button></span></div>
         <div class="orientBox" id="box-${d.id}"></div><input type="hidden" id="p-${d.id}" value="${d.val}">`;
-      el.querySelector('.reset').onclick = () => { setParam(d.id, 'auto'); onChange(); };
+      el.querySelector('.reset').onclick = () => { setParam(d.id, 'auto'); onChange(d.id); };
     } else if (d.type === 'select') {
       el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span></div><select id="p-${d.id}" autocomplete="off">` +
         d.options.map(([v, text]) => `<option value="${v}" ${v === d.val ? 'selected' : ''}>${t(text)}</option>`).join('') + `</select>`;
@@ -137,7 +137,7 @@ export function buildControls(onChange) {
       el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span><span class="val">
         <button class="reset" title="${t('Reset to default')}" aria-label="${t('Reset {label}', { label: t(d.label) })}">↺</button><output id="o-${d.id}"></output></span></div>
         <input type="range" id="p-${d.id}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.val}" autocomplete="off">`;
-      el.querySelector('.reset').onclick = () => { setParam(d.id, defaultOf(d)); saveSetting(d); onChange(); };
+      el.querySelector('.reset').onclick = () => { setParam(d.id, defaultOf(d)); saveSetting(d); onChange(d.id); };
     }
     if (d.hint) {
       const tip = document.createElement('div');
@@ -146,7 +146,20 @@ export function buildControls(onChange) {
     }
     sec.appendChild(el);
     const input = el.querySelector('input,select');
-    input.addEventListener('input', () => { showValue(d); saveSetting(d); onChange(); });
+    if (input.type === 'range') {
+      let keyboard = false, dirty = false;
+      const commit = () => {
+        if (!dirty) return;
+        dirty = false; saveSetting(d); onChange(d.id);
+      };
+      input.addEventListener('input', () => { dirty = true; showValue(d); });
+      input.addEventListener('change', () => { if (!keyboard) commit(); });
+      input.addEventListener('keydown', (e) => {
+        if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) keyboard = true;
+      });
+      input.addEventListener('keyup', () => { if (keyboard) { keyboard = false; commit(); } });
+      input.addEventListener('blur', () => { keyboard = false; commit(); });
+    } else input.addEventListener('input', () => { showValue(d); saveSetting(d); onChange(d.id); });
     showValue(d);
   }
 }

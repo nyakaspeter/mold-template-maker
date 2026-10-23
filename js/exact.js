@@ -8,7 +8,8 @@ import { outlineLoops } from './mesh.js';
 
 let libP = null;
 const lib = () => (libP ||= import('https://cdn.jsdelivr.net/npm/manifold-3d@3.5.4/manifold.js')
-  .then(async (m) => { const w = await m.default(); w.setup(); return w; }));
+  .then(async (m) => { const w = await m.default(); w.setup(); return w; })
+  .catch((error) => { libP = null; throw error; }));
 
 // a triangle list ({ P }) as a solid, with corners at the same place joined up
 function solid(w, m) {
