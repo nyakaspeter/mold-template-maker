@@ -1,17 +1,33 @@
 // English text is the key; German and Hungarian translations. {name} marks a value filled in at run time.
 export const I18N = {
   de: {
+    'Orientation': 'Ausrichtung',
+    'Drag the model to turn it; it snaps to the nearest quarter turn. Auto puts a flat back down; if the object has none, it lies it down so it is cut into front and back halves.':
+      'Ziehe das Modell, um es zu drehen; es rastet in Vierteldrehungen ein. Automatisch legt eine flache Rückseite nach unten; hat das Objekt keine, wird es so hingelegt, dass es in eine vordere und hintere Hälfte geschnitten wird.',
+    'Back to Auto': 'Zurück zu Automatisch',
+    'Yes': 'Ja', 'No': 'Nein',
+    'This STL has holes or loose surfaces, so it can\'t be cut into halves. Repair it (e.g. in your slicer) and load it again, or set “Cut into two halves” to No.':
+      'Diese STL hat Löcher oder lose Flächen und kann daher nicht in Hälften geschnitten werden. Repariere sie (z. B. im Slicer) und lade sie erneut, oder stelle „In zwei Hälften schneiden“ auf Nein.',
+    'Cut into two halves': 'In zwei Hälften schneiden',
+    'For objects that aren\'t flat on the back: cuts the object across, makes a mold for each half, and you glue the cast halves together. The cut is level with the ground of the Orientation view; turn the model there to cut it another way.':
+      'Für Objekte ohne flache Rückseite: schneidet das Objekt quer durch, macht für jede Hälfte eine Form, und du klebst die gegossenen Hälften zusammen. Der Schnitt liegt waagerecht in der Ausrichtungs-Ansicht; drehe das Modell dort, um es anders zu schneiden.',
+    'Cut height': 'Schnitthöhe',
+    'Where the cut goes, from the bottom (0 %) to the top (100 %). It starts where each half stays in one piece and the object is widest, which keeps overhangs to a minimum.':
+      'Wo geschnitten wird, von unten (0 %) bis oben (100 %). Anfangs dort, wo jede Hälfte in einem Stück bleibt und das Objekt am breitesten ist, damit es möglichst wenig Überhänge gibt.',
+    'Alignment pins': 'Passstifte',
+    'How many small pins line the halves up when gluing (0 for none), spread evenly over the cut. A printed lid with pegs, laid on the filled mold, forms their holes; the lids and pins are printed with the templates.':
+      'Wie viele kleine Stifte die Hälften beim Kleben ausrichten (0 für keine), gleichmäßig über die Schnittfläche verteilt. Ein gedruckter Deckel mit Zapfen, auf die gefüllte Form gelegt, formt ihre Löcher; Deckel und Stifte werden mit den Vorlagen gedruckt.',
+    'Pin diameter': 'Stiftdurchmesser',
     'Picture type': 'Bildart', 'Auto': 'Automatisch', 'Auto ({type})': 'Automatisch ({type})',
     'Height map': 'Höhenkarte', 'Line art / sketch': 'Strichzeichnung / Skizze', 'Flat cartoon': 'Flacher Cartoon',
     'Shaded render / painting': 'Schattiertes Rendering / Gemälde',
     'What kind of picture this is; it decides how it is turned into 3D. Auto guesses; pick another type if the guess is wrong.':
       'Welche Art Bild das ist; davon hängt ab, wie es zu 3D wird. Automatisch rät; wähle eine andere Art, wenn die Vermutung falsch ist.',
     'Depth model': 'Tiefenmodell',
-    'Which AI model estimates depth. 1 is the smallest (about 50 MB to download once); 2 and 3 are larger (about 195 MB each) and can give somewhat better depth.':
-      'Welches KI-Modell die Tiefe schätzt. 1 ist das kleinste (einmalig ca. 50 MB Download); 2 und 3 sind größer (je ca. 195 MB) und können etwas bessere Tiefe liefern.',
-    'Size': 'Größe', 'Outline': 'Umriss', 'Relief': 'Relief', 'Final object': 'Endobjekt', 'Mold template': 'Formvorlage',
-    'Object width': 'Objektbreite', 'Scale': 'Maßstab', 'Which side faces up': 'Welche Seite zeigt nach oben',
-    '+Z (normal)': '+Z (normal)', '−Z (upside down)': '−Z (kopfüber)',
+    'Which AI model estimates depth. Depth Anything V2 (small) is the smallest (about 50 MB to download once); the other two are larger (about 195 MB each) and can give somewhat better depth.':
+      'Welches KI-Modell die Tiefe schätzt. Depth Anything V2 (small) ist das kleinste (einmalig ca. 50 MB Download); die anderen beiden sind größer (je ca. 195 MB) und können etwas bessere Tiefe liefern.',
+    'Picture': 'Bild', 'Fine-tuning': 'Feinabstimmung', 'Mold template': 'Formvorlage',
+    'Object width': 'Objektbreite', 'Scale': 'Maßstab',
     'Detail (cell size)': 'Detail (Zellgröße)', 'Smaller = finer detail, slower.': 'Kleiner = feinere Details, langsamer.',
     'Background tolerance': 'Hintergrundtoleranz',
     'Raise it if bits of background stay attached, lower it if pale parts of the figure disappear.':
@@ -53,7 +69,7 @@ export const I18N = {
     'Show colours': 'Farben anzeigen', 'Reset view': 'Ansicht zurücksetzen',
     'Brush size': 'Pinselgröße', 'Undo last stroke': 'Letzten Strich rückgängig machen', 'Reset outline': 'Umriss zurücksetzen',
     'Drop an image or STL here': 'Bild oder STL hier ablegen', 'or click to choose a file': 'oder klicken, um eine Datei auszuwählen',
-    'Or try a demo:': 'Oder eine Demo ausprobieren:', 'Drop to load': 'Zum Laden loslassen', 'Working out the outline': 'Umriss wird ermittelt',
+    'Or try a demo:': 'Oder eine Demo ausprobieren:', 'Upside down': 'Kopfüber', 'Heart': 'Herz', 'Owl': 'Eule', 'Medallion': 'Medaillon', 'Duck': 'Ente', 'Drop to load': 'Zum Laden loslassen', 'Working out the outline': 'Umriss wird ermittelt',
     'Darkened parts are left out. Paint to light up what belongs to the object; hold {shift} while painting to darken what doesn\'t. Applied when you switch stage.':
       'Abgedunkelte Teile werden weggelassen. Male, um aufzuhellen, was zum Objekt gehört; halte beim Malen {shift} gedrückt, um abzudunkeln, was nicht dazugehört. Wird beim Wechseln der Ansicht übernommen.',
     'Shift': 'Umschalt',
@@ -68,17 +84,33 @@ export const I18N = {
     'No shape found — try another background tolerance.': 'Keine Form gefunden – versuche eine andere Hintergrundtoleranz.',
   },
   hu: {
+    'Orientation': 'Tájolás',
+    'Drag the model to turn it; it snaps to the nearest quarter turn. Auto puts a flat back down; if the object has none, it lies it down so it is cut into front and back halves.':
+      'Húzd a modellt a forgatáshoz; negyedfordulatokra ugrik. Az automatikus a lapos hátoldalt teszi alulra; ha a tárgynak nincs ilyen, úgy fekteti le, hogy elülső és hátsó félre vágja.',
+    'Back to Auto': 'Vissza az automatikusra',
+    'Yes': 'Igen', 'No': 'Nem',
+    'This STL has holes or loose surfaces, so it can\'t be cut into halves. Repair it (e.g. in your slicer) and load it again, or set “Cut into two halves” to No.':
+      'Ez az STL lyukas vagy laza felületeket tartalmaz, ezért nem vágható ketté. Javítsd ki (pl. a szeletelőben), és töltsd be újra, vagy állítsd a „Kettévágás” beállítást Nem-re.',
+    'Cut into two halves': 'Kettévágás',
+    'For objects that aren\'t flat on the back: cuts the object across, makes a mold for each half, and you glue the cast halves together. The cut is level with the ground of the Orientation view; turn the model there to cut it another way.':
+      'Nem lapos hátú tárgyakhoz: keresztben kettévágja a tárgyat, mindkét félhez készít öntőformát, a kiöntött feleket pedig összeragasztod. A vágás vízszintes a Tájolás nézetben; ott forgasd el a modellt, ha másképp szeretnéd vágni.',
+    'Cut height': 'Vágás magassága',
+    'Where the cut goes, from the bottom (0 %) to the top (100 %). It starts where each half stays in one piece and the object is widest, which keeps overhangs to a minimum.':
+      'Hol legyen a vágás, alulról (0 %) felfelé (100 %). Kezdetben ott, ahol mindkét fél egy darabban marad és a tárgy a legszélesebb, így a lehető legkevesebb az alávágás.',
+    'Alignment pins': 'Illesztőcsapok',
+    'How many small pins line the halves up when gluing (0 for none), spread evenly over the cut. A printed lid with pegs, laid on the filled mold, forms their holes; the lids and pins are printed with the templates.':
+      'Hány kis csap igazítsa a feleket ragasztáskor (0: egy sem), egyenletesen elosztva a vágási felületen. A lyukaikat egy nyomtatott, csapos fedő formázza, amit a kitöltött formára teszel; a fedők és a csapok a sablonokkal együtt nyomtatódnak.',
+    'Pin diameter': 'Csap átmérője',
     'Picture type': 'Kép típusa', 'Auto': 'Automatikus', 'Auto ({type})': 'Automatikus ({type})',
     'Height map': 'Magasságtérkép', 'Line art / sketch': 'Vonalrajz / vázlat', 'Flat cartoon': 'Sima színezésű rajz',
     'Shaded render / painting': 'Árnyalt render / festmény',
     'What kind of picture this is; it decides how it is turned into 3D. Auto guesses; pick another type if the guess is wrong.':
       'Milyen fajta kép ez; ettől függ, hogyan lesz belőle 3D. Az automatikus becsül; válassz másikat, ha téves.',
     'Depth model': 'Mélységmodell',
-    'Which AI model estimates depth. 1 is the smallest (about 50 MB to download once); 2 and 3 are larger (about 195 MB each) and can give somewhat better depth.':
-      'Melyik AI-modell becsüli a mélységet. Az 1-es a legkisebb (egyszeri kb. 50 MB letöltés); a 2-es és 3-as nagyobb (egyenként kb. 195 MB), és valamivel jobb mélységet adhat.',
-    'Size': 'Méret', 'Outline': 'Körvonal', 'Relief': 'Dombormű', 'Final object': 'Kész tárgy', 'Mold template': 'Öntőforma-sablon',
-    'Object width': 'Tárgy szélessége', 'Scale': 'Méretarány', 'Which side faces up': 'Melyik oldal néz felfelé',
-    '+Z (normal)': '+Z (normál)', '−Z (upside down)': '−Z (fejjel lefelé)',
+    'Which AI model estimates depth. Depth Anything V2 (small) is the smallest (about 50 MB to download once); the other two are larger (about 195 MB each) and can give somewhat better depth.':
+      'Melyik AI-modell becsüli a mélységet. A Depth Anything V2 (small) a legkisebb (egyszeri kb. 50 MB letöltés); a másik kettő nagyobb (egyenként kb. 195 MB), és valamivel jobb mélységet adhat.',
+    'Picture': 'Kép', 'Fine-tuning': 'Finomhangolás', 'Mold template': 'Öntőforma-sablon',
+    'Object width': 'Tárgy szélessége', 'Scale': 'Méretarány',
     'Detail (cell size)': 'Részletesség (cellaméret)', 'Smaller = finer detail, slower.': 'Kisebb = finomabb részletek, lassabb.',
     'Background tolerance': 'Háttértűrés',
     'Raise it if bits of background stay attached, lower it if pale parts of the figure disappear.':
@@ -120,7 +152,7 @@ export const I18N = {
     'Show colours': 'Színek mutatása', 'Reset view': 'Nézet visszaállítása',
     'Brush size': 'Ecsetméret', 'Undo last stroke': 'Utolsó vonás visszavonása', 'Reset outline': 'Körvonal visszaállítása',
     'Drop an image or STL here': 'Húzz ide egy képet vagy STL-t', 'or click to choose a file': 'vagy kattints egy fájl kiválasztásához',
-    'Or try a demo:': 'Vagy próbálj ki egy demót:', 'Drop to load': 'Engedd el a betöltéshez', 'Working out the outline': 'A körvonal meghatározása',
+    'Or try a demo:': 'Vagy próbálj ki egy demót:', 'Upside down': 'Fejjel lefelé', 'Heart': 'Szív', 'Owl': 'Bagoly', 'Medallion': 'Medál', 'Duck': 'Kacsa', 'Drop to load': 'Engedd el a betöltéshez', 'Working out the outline': 'A körvonal meghatározása',
     'Darkened parts are left out. Paint to light up what belongs to the object; hold {shift} while painting to darken what doesn\'t. Applied when you switch stage.':
       'A sötétített részek kimaradnak. Fess rá, hogy kivilágítsd, ami a tárgyhoz tartozik; festés közben tartsd lenyomva a {shift} billentyűt, hogy elsötétítsd, ami nem. Nézetváltáskor lép érvénybe.',
     'Shift': 'Shift',

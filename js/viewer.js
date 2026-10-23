@@ -24,6 +24,7 @@ const mat = {
   painted: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }),
 };
 let root = null, grid = null, meshes = {}, firstFit = true;
+let objUp = null, objDown = null; // the object's shape the right way up, and turned over (made when first shown)
 export let M = null; // the model on show
 
 function geomOf(m) {
@@ -33,9 +34,9 @@ function geomOf(m) {
   g.computeBoundingSphere();
   return g;
 }
-export function showModel(model, painted) {
+export function showModel(model, painted, upsideDown) {
   M = model;
-  if (root) { root.traverse((o) => o.geometry && o.geometry.dispose()); scene.remove(root); }
+  if (root) { root.traverse((o) => o.geometry && o.geometry.dispose()); objUp?.dispose(); objDown?.dispose(); objDown = null; scene.remove(root); }
   root = new THREE.Group(); scene.add(root);
   const g = {};
   for (const k in M.geo) g[k] = geomOf(M.geo[k]);
@@ -58,6 +59,8 @@ export function showModel(model, painted) {
     wall: add(root, g.wall, mat.resin),
     positive: add(root, g.positive, mat.resin),
   };
+  // two halves with alignment pins: the lids and the pins are printed with the templates
+  for (const k of ['lid', 'pins']) if (g[k]) meshes[k] = add(root, g[k], mat.resin);
   // demolded silicone, turned over left-to-right so the cavity faces up: (x, y, z) -> (-x, y, Ztop - z)
   const flip = new THREE.Group();
   flip.rotation.y = Math.PI; flip.position.z = M.Ztop; root.add(flip);
@@ -73,7 +76,33 @@ export function showModel(model, painted) {
   grid.material.transparent = true; grid.material.opacity = 0.5;
   scene.add(grid);
 
+  objUp = g.object; // the object can also be shown turned over: see setUpsideDown
+  setUpsideDown(upsideDown);
   if (firstFit) { fitView(); firstFit = false; }
+}
+// The object turned over sideways, to see its underside with the top still at the back: each piece (both halves of a
+// cut STL) turned around its own middle, so it stays in place, standing on the ground. Only for showing.
+function turnedOver(g) {
+  const src = g.attributes.position.array, nrm = g.attributes.normal.array, P = new Float32Array(src.length), N = new Float32Array(nrm.length);
+  const piece = (v) => (M.parts && src[v * 3] > 0 ? 1 : 0); // cut halves: left and right of x = 0
+  const box = [[Infinity, -Infinity, -Infinity], [Infinity, -Infinity, -Infinity]]; // min x, max x, max z
+  for (let v = 0; v < src.length / 3; v++) {
+    const b = box[piece(v)];
+    b[0] = Math.min(b[0], src[v * 3]); b[1] = Math.max(b[1], src[v * 3]); b[2] = Math.max(b[2], src[v * 3 + 2]);
+  }
+  for (let v = 0; v < src.length / 3; v++) { // half a turn around the y axis: x and z reverse, y stays
+    const [x0, x1, top] = box[piece(v)];
+    P[v * 3] = x0 + x1 - src[v * 3]; P[v * 3 + 1] = src[v * 3 + 1]; P[v * 3 + 2] = top - src[v * 3 + 2];
+    N[v * 3] = -nrm[v * 3]; N[v * 3 + 1] = nrm[v * 3 + 1]; N[v * 3 + 2] = -nrm[v * 3 + 2];
+  }
+  const out = geomOf({ P, N });
+  if (g.attributes.color) out.setAttribute('color', g.attributes.color);
+  return out;
+}
+export function setUpsideDown(on) {
+  if (!M) return;
+  if (on && !objDown) objDown = turnedOver(objUp);
+  meshes.object.geometry = on ? objDown : objUp;
 }
 // frame the next model that comes in (a new file)
 export function requestFit() { firstFit = true; }
@@ -90,7 +119,7 @@ export function fitView() {
 
 // which parts are visible for a stage: 1 object, 2 template, 3 mold (0, the image, shows none)
 export function showStage(n) {
-  const vis = { 0: [], 1: ['object'], 2: ['base', 'wall', 'positive'], 3: ['flip', 'silOver', 'silGap'] }[n];
+  const vis = { 0: [], 1: ['object'], 2: ['base', 'wall', 'positive', 'lid', 'pins'], 3: ['flip', 'silOver', 'silGap'] }[n];
   for (const k in meshes) meshes[k].visible = vis.includes(k);
 }
 export function setPainted(on) {
@@ -130,7 +159,12 @@ function exportSTL(list, name) {
 }
 // download the STL for a stage, named after the loaded file
 export function exportStage(n, baseName) {
-  if (n === 1) exportSTL([meshes.object], `${baseName}-object.stl`);
-  else if (n === 2) exportSTL([meshes.base, meshes.wall, meshes.positive], `${baseName}-template.stl`);
+  if (n === 1) { // the right way up, however it is shown
+    const shown = meshes.object.geometry;
+    meshes.object.geometry = objUp;
+    exportSTL([meshes.object], `${baseName}-object.stl`);
+    meshes.object.geometry = shown;
+  }
+  else if (n === 2) exportSTL([meshes.base, meshes.wall, meshes.positive, meshes.lid, meshes.pins].filter(Boolean), `${baseName}-template.stl`);
   else exportSTL([meshes.silOver, meshes.silGap], `${baseName}-silicone-mold.stl`);
 }

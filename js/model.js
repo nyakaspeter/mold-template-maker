@@ -1,7 +1,7 @@
 // Building the object, the printed template and the silicone mold from a height map.
 import { t } from './i18n.js';
 import { blur, signedDist, fillHoles, smoothstep, neighbours } from './grid.js';
-import { meshSolid } from './mesh.js';
+import { meshSolid, cylinder, joinMeshes } from './mesh.js';
 
 export function spreadColours(colors, mask, W, H) {
   const has = Uint8Array.from(mask);
@@ -102,6 +102,37 @@ export function buildModel(hf, p) {
   const Ztop = B + maxTop + over;
   const G = { W, H, res, ox: -(W - 1) * res / 2, oy: (H - 1) * res / 2 };
 
+  // Alignment pins (halves only): a hole in the back of the cast for each (cut by exact.js), formed by a peg on a
+  // printed lid that is laid on the filled mold. The lid also has two small holes for excess resin to escape.
+  const pins = (hf.pins || []).map((q) => ({ ...q, x: G.ox + (q.i + pad) * res, y: G.oy - (q.j + pad) * res }));
+  let lid = null;
+  if (pins.length) {
+    const vents = [], ventR = 1, taken = pins.map((q) => [q.x, q.y]);
+    for (let n = 0; n < 2; n++) {
+      let best = null, score = 3 + ventR;
+      for (let k = 0; k < N; k++) {
+        if (sdfPlaque[k] < ventR + 1) continue;
+        const x = G.ox + (k % W) * res, y = G.oy - ((k / W) | 0) * res;
+        const s = Math.min(...taken.map(([a, b]) => Math.hypot(x - a, y - b)));
+        if (s > score) { score = s; best = [x, y]; }
+      }
+      if (!best) break;
+      vents.push(best); taken.push(best);
+    }
+    const sdfLid = new Float32Array(N);
+    for (let k = 0; k < N; k++) {
+      const x = G.ox + (k % W) * res, y = G.oy - ((k / W) | 0) * res;
+      let s = sdfCav[k];
+      for (const [a, b] of vents) s = Math.min(s, Math.hypot(x - a, y - b) - ventR);
+      sdfLid[k] = s;
+    }
+    // printed pegs up; it is turned over onto the mold the same way the mold was turned over
+    lid = {
+      plate: meshSolid(G, sdfLid, 0, B),
+      pegs: joinMeshes(pins.map((q) => [cylinder(q.x, q.y, q.r, B - 0.05, B + q.d)])),
+    };
+  }
+
   const geo = {
     object: meshSolid(G, sdfPlaque, 0, objTop),
     base: meshSolid(G, sdfOut, 0, B),
@@ -128,7 +159,47 @@ export function buildModel(hf, p) {
   const a = res * res / 1000;
   const dims = (b) => [(b.x1 - b.x0 + 1) * res, (b.y1 - b.y0 + 1) * res];
   return {
-    G, geo, B, Ztop, maxTop, res, p, colors: colors && spreadColours(colors, mask, W, H),
+    G, geo, lid, pins, B, Ztop, maxTop, res, p, colors: colors && spreadColours(colors, mask, W, H),
+    sdfCav, // the template's inside outline, for exact STL halves
     stats: { castMl: cast * a, silMl: sil * a, obj: dims(bo), tpl: dims(bt), sil: dims(bc), objH: maxTop, tplH: Ztop },
+  };
+}
+
+// Two halves of an STL (a model for each) laid out side by side, so each stage downloads as one file.
+// With pins, the templates' stage also has a row of pins in front of the templates and the lids in front of those;
+// the cast halves and the silicone stay centred.
+export function buildHalves([A, Bm], p) {
+  const w = (A.G.W - 1) * A.res, h = (A.G.H - 1) * A.res, dx = w / 2 + 1;
+  const withLids = !!(A.lid || Bm.lid);
+  const pinParts = A.pins.map((q) => ({ r: q.r - 0.15, len: 2 * q.d - 0.6 })); // one pin per pair of holes, a little loose
+  const pinRow = pinParts.length ? Math.max(...pinParts.map((q) => q.r)) * 2 + 4 : 0;
+  const rows = withLids ? 2 * h + 2 + pinRow : h;
+  const y0 = rows / 2 - h / 2, yPin = y0 - h / 2 - 1 - pinRow / 2, yLid = yPin - pinRow / 2 - 1 - h / 2;
+  const both = (key, y = y0) => joinMeshes([[A.geo[key], -dx, y], [Bm.geo[key], dx, y]]);
+  // the silicone is turned over around x = 0 for display and download: place it mirrored, and level the
+  // two halves' tops so both land on the ground
+  const Ztop = Math.max(A.Ztop, Bm.Ztop);
+  const sil = (key) => joinMeshes([[A.geo[key], dx, 0, Ztop - A.Ztop], [Bm.geo[key], -dx, 0, Ztop - Bm.Ztop]]);
+  const geo = {
+    object: both('object', 0), base: both('base'), wall: both('wall'), positive: both('positive'),
+    silOver: sil('silOver'), silGap: sil('silGap'),
+  };
+  if (withLids) {
+    const lids = [];
+    for (const [M, x] of [[A, -dx], [Bm, dx]]) if (M.lid) lids.push([M.lid.plate, x, yLid], [M.lid.pegs, x, yLid]);
+    geo.lid = joinMeshes(lids);
+    const gap = 3, total = pinParts.reduce((s, q) => s + 2 * q.r + gap, -gap);
+    let x = -total / 2;
+    geo.pins = joinMeshes(pinParts.map((q) => { x += q.r; const m = cylinder(x, yPin, q.r, 0, q.len); x += q.r + gap; return [m]; }));
+  }
+  const st = [A.stats, Bm.stats];
+  return {
+    G: A.G, geo, B: A.B, Ztop, maxTop: Math.max(A.maxTop, Bm.maxTop), res: A.res, p, colors: null,
+    parts: st.map((s, i) => ({ ...s, B: [A, Bm][i].B, Ztop: [A, Bm][i].Ztop })),
+    stats: {
+      castMl: st[0].castMl + st[1].castMl, silMl: st[0].silMl + st[1].silMl,
+      obj: [2 * w + 2, h], tpl: [2 * w + 2, rows], sil: [2 * w + 2, h],
+      objH: Math.max(st[0].objH, st[1].objH), tplH: Ztop,
+    },
   };
 }

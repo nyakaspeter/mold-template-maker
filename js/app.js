@@ -6,11 +6,13 @@ import { t, getLang, setLang, LANGS, FLAGS } from './i18n.js';
 import { PARAMS, DEFAULTS, kept, perKind, savedValue, buildControls, setParam, readParams, showFor } from './settings.js';
 import { STYLE_PRESETS, analyzeImage } from './style.js';
 import { hfFromImage } from './relief.js';
-import { hfFromSTL } from './stl.js';
-import { buildModel } from './model.js';
+import { hfFromSTL, halvesFromSTL, bestCut, detectSTL, originalMesh } from './stl.js';
+import { buildModel, buildHalves } from './model.js';
+import { exactHalves } from './exact.js';
 import { aiDepth } from './depth.js';
-import { M, showModel, fitView, requestFit, showStage, setPainted, exportStage, camera, controls } from './viewer.js';
+import { M, showModel, fitView, requestFit, showStage, setPainted, setUpsideDown, exportStage, camera, controls } from './viewer.js';
 import { initEditor, resetEditor, setEditorOutline, drawEditor } from './editor.js';
+import { attachOrient, setOrientModel, showOrient, dropOrient } from './orient.js';
 
 const view = $('#view');
 let step = 1; // 0 image, 1 object, 2 template, 3 mold
@@ -28,6 +30,7 @@ function setStep(n) {
   if (!M) { updateCaption(); return; }
   showStage(n);
   $('#paintWrap').hidden = !(n === 1 && M.colors);
+  $('#flipWrap').hidden = !(n === 1 && M.notFlat); // turning it over shows the underside of a model that isn't flat-backed
   updateCaption();
 }
 const f1 = (x) => (Math.round(x * 10) / 10).toString();
@@ -41,11 +44,12 @@ function updateCaption() {
     dl.hidden = true; return;
   }
   if (!M) { $('#caption').innerHTML = ''; dl.hidden = true; return; }
-  const s = M.stats;
+  const s = M.stats, parts = M.parts || [{ ...s, B: M.B }]; // two halves: both sizes
+  const sizes = (f) => parts.map(f).join(' + ');
   const [spec, label] = { // the stage's name is already on its tab
-    1: [t('{size} · about {ml} ml of casting material', { size: size3(s.obj, s.objH), ml: f1(s.castMl) }), 'Download object STL'],
-    2: [t('{size} · needs about {ml} ml (≈ {g} g) of silicone', { size: size3(s.tpl, s.tplH), ml: Math.ceil(s.silMl), g: Math.ceil(s.silMl * 1.1) }), 'Download template STL'],
-    3: [t('{size} · holds about {ml} ml', { size: size3(s.sil, s.tplH - M.B), ml: f1(s.castMl) }), 'Download mold STL'],
+    1: [t('{size} · about {ml} ml of casting material', { size: sizes((q) => size3(q.obj, q.objH)), ml: f1(s.castMl) }), 'Download object STL'],
+    2: [t('{size} · needs about {ml} ml (≈ {g} g) of silicone', { size: sizes((q) => size3(q.tpl, q.tplH)), ml: Math.ceil(s.silMl), g: Math.ceil(s.silMl * 1.1) }), 'Download template STL'],
+    3: [t('{size} · holds about {ml} ml', { size: sizes((q) => size3(q.sil, q.tplH - q.B)), ml: f1(s.castMl) }), 'Download mold STL'],
   }[step];
   $('#caption').innerHTML = `<span class="spec">${spec}</span>`;
   dl.textContent = t(label); dl.hidden = false;
@@ -57,18 +61,39 @@ function applyStyle(type) {
   S.auto = STYLE_PRESETS[type]; S.method = { shaded: 'ai', heightmap: 'bright' }[type] || 'cartoon';
   for (const [k, v] of Object.entries(S.auto)) setParam(k, v);
 }
-// the Auto choice names what was detected, e.g. "Auto (Flat cartoon)"
+// the Auto choices name what was detected, e.g. "Auto (Flat cartoon)", "Auto (Yes)" (Orientation shows a reset button)
 function autoLabel() {
   const o = $('#p-picType option[value="auto"]'), d = PARAMS.find((x) => x.id === 'picType');
   if (o && S.detected) o.textContent = t('Auto ({type})', { type: t(d.options.find(([v]) => v === S.detected)[1]) });
+  const c = $('#p-split option[value="auto"]');
+  if (c && S.stlAuto) c.textContent = t('Auto ({type})', { type: t(stlChoice({ ...readParams(), split: 'auto' }).split ? 'Yes' : 'No') });
 }
+// an orientation picked in the 3D view of the Orientation setting: Auto's own position is Auto again, and the
+// position already in use changes nothing
+function pickSide(up) {
+  const e = $('#p-stlUp'), value = up === S.stlAuto.up ? 'auto' : up;
+  if (value === e.value) return;
+  e.value = value; e.dispatchEvent(new Event('input'));
+}
+// The STL's up side and whether it is cut, with Auto worked out: cut when there's no flat back facing down
+function stlChoice(p) {
+  const up = p.stlUp === 'auto' ? S.stlAuto.up : p.stlUp; // a side, maybe with quarter turns: 'y:1'
+  return { up, split: p.split === 'auto' ? !S.stlAuto.flats.includes(up.split(':')[0]) : p.split === 'yes' };
+}
+// for STLs the "method" is whether it is cut into halves, with or without pins: it decides which settings show
+const stlMethod = (p) => (stlChoice(p).split ? (p.pins ? 'split-pins' : 'split') : 'whole');
 // any setting changed: a new picture type first applies its method and settings
 function settingChanged() {
-  const type = readParams().picType;
-  if (S.kind === 'image' && type !== S.picType) {
-    S.picType = type;
-    applyStyle(type === 'auto' ? S.detected : type);
+  const p = readParams();
+  if (S.kind === 'image' && p.picType !== S.picType) {
+    S.picType = p.picType;
+    applyStyle(p.picType === 'auto' ? S.detected : p.picType);
     showFor();
+  }
+  if (S.kind === 'stl') {
+    autoLabel(); // "Auto (Yes)" can change with the up side
+    showOrient(stlChoice(p).up); // e.g. back to Auto's side after the reset
+    if (stlMethod(p) !== S.method) { S.method = stlMethod(p); showFor(); }
   }
   schedule();
 }
@@ -78,20 +103,26 @@ function loadSource(kind, data, name) {
   const prevKind = S.kind;
   S.kind = kind; S.name = name; S.ai = null; S.aiFailed = false;
   if (kind === 'image') { S.img = data; S.geom = null; } else { S.geom = data; S.img = null; }
-  // every new file starts with fresh Outline and Relief settings; other settings keep your values,
+  // every new file starts with fresh settings where marked (how it is read and shaped); others keep your values,
   // except where images and STLs need different ones and the file type changed
   const kindChanged = kind !== prevKind;
   for (const d of PARAMS) {
     if (!d.id) continue;
-    const fresh = (d.group === 'Outline' || d.group === 'Relief') && !d.keep;
-    if (fresh) setParam(d.id, DEFAULTS[kind][d.id] ?? d.val);
+    if (d.fresh) setParam(d.id, DEFAULTS[kind][d.id] ?? d.val);
     else if (kindChanged && perKind(d)) setParam(d.id, savedValue(d, kind));
   }
   if (kind === 'image') {
+    dropOrient(); // the Orientation view is for STLs only
     S.detected = analyzeImage(data); S.picType = 'auto';
     applyStyle(S.detected);
     autoLabel();
-  } else S.auto = null;
+  } else {
+    // which side goes down, and whether to cut it, are worked out from the shape (both can be changed)
+    S.auto = null; S.splitKey = null; S.stlAuto = detectSTL(data, readParams());
+    setOrientModel(data); showOrient(S.stlAuto.up, true);
+    S.method = stlMethod(readParams());
+    autoLabel();
+  }
   showFor(kind);
   $('#srcName').textContent = name;
   S.edit = null; S.editUsed = false; S.editDirty = false; resetEditor();
@@ -140,10 +171,30 @@ async function regen() {
     await new Promise((r) => setTimeout(r, 30)); // let the status text paint first
     if (my !== gen) return;
     const t0 = performance.now();
-    const hf = S.kind === 'image' ? hfFromImage(S.img, wantAI ? S.ai : null, p, S.editUsed ? S.edit : null) : hfFromSTL(S.geom, p);
+    const split = S.kind === 'stl' && stlChoice(p).split;
+    if (S.kind === 'stl') p.stlUp = stlChoice(p).up;
+    if (split) { p.backT = 0; p.border = 0; } // hidden for halves: they'd end up in the glued seam
+    // the cut starts where each half stays in one piece and the object is widest; worked out again when the file
+    // or its up direction changes
+    if (split && S.splitKey !== `${p.scale}|${p.stlUp}`) {
+      S.splitKey = `${p.scale}|${p.stlUp}`;
+      p.splitAt = bestCut(S.geom, p); S.auto = { splitAt: p.splitAt }; setParam('splitAt', p.splitAt);
+    }
+    const hf = S.kind === 'image' ? hfFromImage(S.img, wantAI ? S.ai : null, p, S.editUsed ? S.edit : null)
+      : split ? halvesFromSTL(S.geom, p) : hfFromSTL(S.geom, p);
     S.building = false;
     if (S.kind === 'image') setEditorOutline(hf);
-    showModel(buildModel(hf, p), $('#paint').checked);
+    let model;
+    if (split) {
+      const halves = hf.map((h) => buildModel(h, p));
+      await exactHalves(S.geom, p, halves); // the model itself cut in two, rather than height maps
+      if (my !== gen) return;
+      model = buildHalves(halves, p);
+    } else model = buildModel(hf, p);
+    model.notFlat = S.kind === 'stl' && (split || !S.stlAuto.flats.includes(p.stlUp.split(':')[0]));
+    // an STL without a flat back that isn't cut: the Object stage shows the model as it is
+    if (model.notFlat && !split) model.geo.object = originalMesh(S.geom, p);
+    showModel(model, $('#paint').checked, model.notFlat && $('#flipObj').checked);
     setStep(step);
     if (!(S.aiFailed && wantAI)) status(t('Built in {ms} ms', { ms: Math.round(performance.now() - t0) }));
   } catch (e) { console.error(e); status(e.message, true); S.building = false; if (step === 0) drawEditor(); }
@@ -166,8 +217,9 @@ function applyLang() {
   if (!S.kind) $('#srcName').textContent = t('No file loaded');
   const built = !!$('#p-width'), values = built ? readParams() : null;
   buildControls(settingChanged);
-  autoLabel();
+  attachOrient($('#box-stlUp'), pickSide);
   if (values) for (const d of PARAMS) if (d.id) setParam(d.id, values[d.id]);
+  autoLabel(); // after the values are back: "Auto (Yes)" depends on them
   showFor();
   updateCaption();
 }
@@ -198,11 +250,12 @@ file.onchange = () => { loadFile(file.files[0]); file.value = ''; };
 }
 // the demos are ordinary files next to the page, loaded like a dropped file
 const loadDemo = async (name) => loadFile(new File([await (await fetch(name)).blob()], name));
-$('#demo').onclick = () => loadDemo('demo-heart.png');
-$('#demoStl').onclick = () => loadDemo('demo-medallion.stl');
+// (height map, drawing, flat-backed STL, round STL that gets cut in two)
+document.querySelectorAll('[data-demo]').forEach((b) => (b.onclick = () => loadDemo(b.dataset.demo)));
 document.querySelectorAll('#steps button').forEach((b) => (b.onclick = () => setStep(+b.dataset.step)));
 $('#fit').onclick = fitView;
 $('#paint').onchange = () => setPainted($('#paint').checked);
+$('#flipObj').onchange = () => setUpsideDown(!!M?.notFlat && $('#flipObj').checked);
 $('#dl').onclick = () => exportStage(step, (S.name || 'model').replace(/\.[^.]+$/, ''));
 
 // hook for checking the app from the browser console
