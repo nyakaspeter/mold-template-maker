@@ -23,9 +23,9 @@ const lib = () => (tfP ||= import('https://cdn.jsdelivr.net/npm/@huggingface/tra
 function estimator(key, gpu, onStatus) {
   if (!estimators[key]) {
     estimators[key] = (async () => {
-      onStatus(t('Loading depth model…'));
+      onStatus(t('loadingDepth'));
       const tf = await lib();
-      const progress_callback = (e) => { if (e.status === 'progress' && e.file?.endsWith('.onnx')) onStatus(t('Downloading depth model… {p}%', { p: Math.round(e.progress) })); };
+      const progress_callback = (e) => { if (e.status === 'progress' && e.file?.endsWith('.onnx')) onStatus(t('downloadingDepth', { p: Math.round(e.progress) })); };
       if (gpu) {
         try { return { gpu, pipe: await tf.pipeline('depth-estimation', MODELS[key], { device: 'webgpu', dtype: 'fp16', progress_callback }) }; }
         catch (e) { console.warn('WebGPU depth failed, using the CPU', e); }
@@ -88,7 +88,7 @@ const smooth = (f, w, h, r) => boxBlur(boxBlur(f, w, h, r), w, h, r);
 export async function aiDepth(img, onStatus, model = '1') {
   const { gpu, pipe } = await estimator(MODELS[model] ? model : '1', await hasGPU(), onStatus);
   const tf = await lib();
-  onStatus(t('Estimating depth…'));
+  onStatus(t('estimatingDepth'));
   const sc = Math.min(1, OUT / Math.max(img.width, img.height));
   const w = Math.round(img.width * sc), h = Math.round(img.height * sc);
   let d = await runAt(tf, pipe.model, img, BASE, w, h);

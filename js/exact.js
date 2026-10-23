@@ -51,7 +51,7 @@ export async function exactHalves(geom, p, models) {
     let whole = null;
     try { whole = k(solid(w, originalMesh(geom, p))); } catch (e) { /* not a closed solid */ }
     if (!whole || whole.status() !== 'NoError' || whole.isEmpty()) {
-      throw new Error(t('This model has holes or loose surfaces, so it can\'t be cut into halves. Repair it (e.g. in your slicer) and load it again, or set “Cut into two halves” to No.'));
+      throw new Error(t('invalidSolid'));
     }
     // separate parts that overlap (a head pushed into a body) become one solid
     const parts = whole.decompose();

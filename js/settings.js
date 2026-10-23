@@ -7,70 +7,70 @@ import { t } from './i18n.js';
 // sliders are under Fine-tuning. fresh: starts from its default with every new file (the rest is remembered).
 // only: 'file' = once any file is loaded; before that only what applies to every file and is kept shows.
 export const PARAMS = [
-  { g: 'Picture', only: 'image' },
-  { id: 'picType', label: 'Picture type', type: 'select', val: 'auto', only: 'image', fresh: true,
-    options: [['auto', 'Auto'], ['heightmap', 'Height map'], ['lineart', 'Line art / sketch'], ['flat', 'Flat cartoon'], ['shaded', 'Shaded render / painting']],
-    hint: 'What kind of picture this is; it decides how it is turned into 3D. Auto guesses; pick another type if the guess is wrong.' },
-  { id: 'depthModel', label: 'Depth model', type: 'select', val: '1', only: 'image', modes: 'ai cartoon',
-    options: [['1', 'Depth Anything V2 (small)'], ['2', 'Depth Anything V2'], ['3', 'Distill Any Depth']],
-    hint: 'Which AI model estimates depth. Depth Anything V2 (small) is the smallest (about 50 MB to download once); the other two are larger (about 195 MB each) and can give somewhat better depth.' },
-  { id: 'tol', label: 'Background tolerance', min: 5, max: 200, step: 1, val: 55, only: 'image', fresh: true,
-    hint: 'Raise it if bits of background stay attached, lower it if pale parts of the figure disappear.' },
-  { id: 'reopen', label: 'Open gaps between parts', unit: '', min: 0, max: 1, step: 0.05, val: 0.5, only: 'image', modes: 'ai', fresh: true,
-    hint: 'Removes enclosed background, like the space between legs. Higher opens more, 0 keeps everything filled.' },
+  { g: 'picture', storageKey: 'Picture', only: 'image' },
+  { id: 'picType', label: 'pictureType', type: 'select', val: 'auto', only: 'image', fresh: true,
+    options: [['auto', 'auto'], ['heightmap', 'heightMap'], ['lineart', 'lineArt'], ['flat', 'flatCartoon'], ['shaded', 'shadedRender']],
+    hint: 'pictureTypeHelp' },
+  { id: 'depthModel', label: 'depthModel', type: 'select', val: '1', only: 'image', modes: 'ai cartoon',
+    options: [['1', 'depthSmall'], ['2', 'depthBase'], ['3', 'depthDistill']],
+    hint: 'depthModelHelp' },
+  { id: 'tol', label: 'backgroundTolerance', min: 5, max: 200, step: 1, val: 55, only: 'image', fresh: true,
+    hint: 'backgroundToleranceHelp' },
+  { id: 'reopen', label: 'openGaps', unit: '', min: 0, max: 1, step: 0.05, val: 0.5, only: 'image', modes: 'ai', fresh: true,
+    hint: 'openGapsHelp' },
 
-  { g: 'Object' },
-  { id: 'stlUp', label: 'Orientation', type: 'orient', val: 'auto', only: 'stl', fresh: true,
-    hint: 'Drag the model to turn it; it snaps to the nearest quarter turn. Auto puts a flat back down; if the object has none, it lies it down so it is cut into front and back halves.' },
-  { id: 'width', label: 'Object width', unit: 'mm', min: 10, max: 250, step: 1, val: 80, only: 'image' },
-  { id: 'scale', label: 'Scale', unit: '%', min: 10, max: 400, step: 5, val: 100, only: 'stl' },
-  { id: 'split', label: 'Cut into two halves', type: 'select', val: 'auto', only: 'stl', fresh: true,
-    options: [['auto', 'Auto'], ['yes', 'Yes'], ['no', 'No']],
-    hint: 'For objects that aren\'t flat on the back: cuts the object across, makes a mold for each half, and you glue the cast halves together. The cut is level with the ground of the Orientation view; turn the model there to cut it another way.' },
-  { id: 'splitAt', label: 'Cut height', unit: '%', min: 5, max: 95, step: 1, val: 50, only: 'stl', modes: 'split split-pins', fresh: true,
-    hint: 'Where the cut goes, from the bottom (0 %) to the top (100 %). It starts where each half stays in one piece and the object is widest, which keeps overhangs to a minimum.' },
-  { id: 'pins', label: 'Alignment pins', unit: '', min: 0, max: 10, step: 1, val: 0, only: 'stl', modes: 'split split-pins',
-    hint: 'How many small pins line the halves up when gluing (0 for none), spread evenly over the cut. A printed lid with pegs, laid on the filled mold, forms their holes; the lids and pins are printed with the templates.' },
-  { id: 'pinD', label: 'Pin diameter', unit: 'mm', min: 1.5, max: 8, step: 0.5, val: 3, only: 'stl', modes: 'split-pins',
-    hint: 'Thicker pins are spaced farther apart, so fewer may fit than the number requested.' },
-  { id: 'reliefH', label: 'Depth range', unit: 'mm', min: 0, max: 25, step: 0.5, val: 3, only: 'image', fresh: true },
-  { id: 'puff', label: 'Puff (roundness)', unit: 'mm', min: 0, max: 10, step: 0.25, val: 2, only: 'image', fresh: true,
-    hint: 'How much each part bulges, like a cushion.' },
-  { id: 'lineDepth', label: 'Line grooves', unit: 'mm', min: 0, max: 3, step: 0.1, val: 0.5, only: 'image', fresh: true,
-    hint: 'Presses dark outlines of a drawing in as grooves.' },
+  { g: 'object', storageKey: 'Object' },
+  { id: 'stlUp', label: 'orientation', type: 'orient', val: 'auto', only: 'stl', fresh: true,
+    hint: 'orientationHelp' },
+  { id: 'width', label: 'objectWidth', unit: 'mm', min: 10, max: 250, step: 1, val: 80, only: 'image' },
+  { id: 'scale', label: 'scale', unit: '%', min: 10, max: 400, step: 5, val: 100, only: 'stl' },
+  { id: 'split', label: 'split', type: 'select', val: 'auto', only: 'stl', fresh: true,
+    options: [['auto', 'auto'], ['yes', 'yes'], ['no', 'no']],
+    hint: 'splitHelp' },
+  { id: 'splitAt', label: 'cutHeight', unit: '%', min: 5, max: 95, step: 1, val: 50, only: 'stl', modes: 'split split-pins', fresh: true,
+    hint: 'cutHeightHelp' },
+  { id: 'pins', label: 'pins', unit: '', min: 0, max: 10, step: 1, val: 0, only: 'stl', modes: 'split split-pins',
+    hint: 'pinsHelp' },
+  { id: 'pinD', label: 'pinDiameter', unit: 'mm', min: 1.5, max: 8, step: 0.5, val: 3, only: 'stl', modes: 'split-pins',
+    hint: 'pinDiameterHelp' },
+  { id: 'reliefH', label: 'depthRange', unit: 'mm', min: 0, max: 25, step: 0.5, val: 3, only: 'image', fresh: true },
+  { id: 'puff', label: 'roundness', unit: 'mm', min: 0, max: 10, step: 0.25, val: 2, only: 'image', fresh: true,
+    hint: 'roundnessHelp' },
+  { id: 'lineDepth', label: 'lineGrooves', unit: 'mm', min: 0, max: 3, step: 0.1, val: 0.5, only: 'image', fresh: true,
+    hint: 'lineGroovesHelp' },
   // not for STLs cut in two: the halves are glued back to back, so a plate or rim would end up in the seam
-  { id: 'backT', label: 'Back thickness', unit: 'mm', min: 0, max: 20, step: 0.5, val: 2, only: 'file', modes: 'ai cartoon bright whole',
-    hint: 'Flat-sided base under the relief.' },
-  { id: 'border', label: 'Flat border around shape', unit: 'mm', min: 0, max: 20, step: 0.5, val: 0, only: 'file', modes: 'ai cartoon bright whole',
-    hint: 'Adds a flat plaque rim around the outline.' },
+  { id: 'backT', label: 'backThickness', unit: 'mm', min: 0, max: 20, step: 0.5, val: 2, only: 'file', modes: 'ai cartoon bright whole',
+    hint: 'backThicknessHelp' },
+  { id: 'border', label: 'flatBorder', unit: 'mm', min: 0, max: 20, step: 0.5, val: 0, only: 'file', modes: 'ai cartoon bright whole',
+    hint: 'flatBorderHelp' },
 
-  { g: 'Mold template' },
-  { id: 'gap', label: 'Gap (= silicone rim width)', unit: 'mm', min: 1, max: 25, step: 0.5, val: 3 },
-  { id: 'over', label: 'Silicone above highest point', unit: 'mm', min: 1, max: 15, step: 0.5, val: 4 },
-  { id: 'wallT', label: 'Wall thickness', unit: 'mm', min: 0.8, max: 6, step: 0.2, val: 2 },
-  { id: 'baseT', label: 'Base thickness', unit: 'mm', min: 0.8, max: 6, step: 0.2, val: 2 },
+  { g: 'moldTemplate', storageKey: 'Mold template' },
+  { id: 'gap', label: 'siliconeRim', unit: 'mm', min: 1, max: 25, step: 0.5, val: 3 },
+  { id: 'over', label: 'siliconeAbove', unit: 'mm', min: 1, max: 15, step: 0.5, val: 4 },
+  { id: 'wallT', label: 'wallThickness', unit: 'mm', min: 0.8, max: 6, step: 0.2, val: 2 },
+  { id: 'baseT', label: 'baseThickness', unit: 'mm', min: 0.8, max: 6, step: 0.2, val: 2 },
 
-  { g: 'Fine-tuning' },
-  { id: 'res', label: 'Detail (cell size)', unit: 'mm', min: 0.1, max: 1, step: 0.05, val: 0.2,
-    hint: 'Smaller = finer detail, slower.' },
-  { id: 'gapClose', label: 'Close outline gaps', unit: 'mm', min: 0, max: 5, step: 0.1, val: 0.5, only: 'image', fresh: true,
-    hint: 'Bridges small breaks in an outline so the background can\'t leak in.' },
-  { id: 'maskSmooth', label: 'Outline smoothing', unit: 'mm', min: 0, max: 3, step: 0.1, val: 0.2, only: 'file', fresh: true },
-  { id: 'colorTol', label: 'Colour area tolerance', min: 4, max: 60, step: 1, val: 16, only: 'image', modes: 'cartoon', fresh: true,
-    hint: 'Lower = more, smaller areas (more detail). Higher = merges shading.' },
-  { id: 'simplify', label: 'Smooth out texture', unit: '', min: 0, max: 4, step: 1, val: 0, only: 'image', modes: 'cartoon', fresh: true,
-    hint: 'Evens out paint texture and pencil shading before splitting into areas.' },
-  { id: 'lineDark', label: 'Line darkness', unit: '', min: 0.2, max: 0.8, step: 0.02, val: 0.38, only: 'image', fresh: true,
-    hint: 'How dark a stroke must be to count as a line. Raise it for pencil sketches.' },
-  { id: 'edgeDepth', label: 'Colour edge grooves', unit: 'mm', min: 0, max: 2, step: 0.1, val: 0, only: 'image', fresh: true,
-    hint: 'Grooves where colours meet: eyes, mouth, stripes. For images without outlines.' },
-  { id: 'detail', label: 'Surface detail', unit: 'mm', min: 0, max: 2, step: 0.1, val: 0, only: 'image', fresh: true,
-    hint: 'Light parts slightly raised, dark parts slightly lowered.' },
-  { id: 'gamma', label: 'Relief curve', unit: '', min: 0.3, max: 3, step: 0.05, val: 1, only: 'image', modes: 'ai bright', fresh: true,
-    hint: '<1 puffs it up, >1 flattens the low parts.' },
+  { g: 'fineTuning', storageKey: 'Fine-tuning' },
+  { id: 'res', label: 'detail', unit: 'mm', min: 0.1, max: 1, step: 0.05, val: 0.2,
+    hint: 'detailHelp' },
+  { id: 'gapClose', label: 'closeGaps', unit: 'mm', min: 0, max: 5, step: 0.1, val: 0.5, only: 'image', fresh: true,
+    hint: 'closeGapsHelp' },
+  { id: 'maskSmooth', label: 'outlineSmoothing', unit: 'mm', min: 0, max: 3, step: 0.1, val: 0.2, only: 'file', fresh: true },
+  { id: 'colorTol', label: 'colourTolerance', min: 4, max: 60, step: 1, val: 16, only: 'image', modes: 'cartoon', fresh: true,
+    hint: 'colourToleranceHelp' },
+  { id: 'simplify', label: 'smoothTexture', unit: '', min: 0, max: 4, step: 1, val: 0, only: 'image', modes: 'cartoon', fresh: true,
+    hint: 'smoothTextureHelp' },
+  { id: 'lineDark', label: 'lineDarkness', unit: '', min: 0.2, max: 0.8, step: 0.02, val: 0.38, only: 'image', fresh: true,
+    hint: 'lineDarknessHelp' },
+  { id: 'edgeDepth', label: 'colourGrooves', unit: 'mm', min: 0, max: 2, step: 0.1, val: 0, only: 'image', fresh: true,
+    hint: 'colourGroovesHelp' },
+  { id: 'detail', label: 'surfaceDetail', unit: 'mm', min: 0, max: 2, step: 0.1, val: 0, only: 'image', fresh: true,
+    hint: 'surfaceDetailHelp' },
+  { id: 'gamma', label: 'reliefCurve', unit: '', min: 0.3, max: 3, step: 0.05, val: 1, only: 'image', modes: 'ai bright', fresh: true,
+    hint: 'reliefCurveHelp' },
   // cut STL halves are the model itself, not a height map, so there is no relief to smooth
-  { id: 'reliefSmooth', label: 'Relief smoothing', unit: 'mm', min: 0, max: 3, step: 0.05, val: 0.1, only: 'file', modes: 'ai cartoon bright whole', fresh: true },
-  { id: 'edgeSoft', label: 'Edge rounding', unit: 'mm', min: 0, max: 6, step: 0.1, val: 1, only: 'image', modes: 'ai bright', fresh: true },
+  { id: 'reliefSmooth', label: 'reliefSmoothing', unit: 'mm', min: 0, max: 3, step: 0.05, val: 0.1, only: 'file', modes: 'ai cartoon bright whole', fresh: true },
+  { id: 'edgeSoft', label: 'edgeRounding', unit: 'mm', min: 0, max: 6, step: 0.1, val: 1, only: 'image', modes: 'ai bright', fresh: true },
 ];
 export const DEFAULTS = {
   image: { backT: 2, border: 0 },
@@ -107,12 +107,12 @@ export function buildControls(onChange) {
   for (const d of PARAMS) {
     if (d.g) {
       const det = document.createElement('details');
-      det.open = store.get('sections', {})[d.g] ?? true; // all sections start open
+      det.open = store.get('sections', {})[d.storageKey] ?? true; // all sections start open
       if (d.only) det.dataset.only = d.only;
       det.innerHTML = `<summary>${t(d.g)}</summary><div class="body"></div>`;
       // remember only what you open or close yourself (summary clicks, also from the keyboard)
       det.querySelector('summary').addEventListener('click', () => setTimeout(() => {
-        const o = store.get('sections', {}); o[d.g] = det.open; store.set('sections', o);
+        const o = store.get('sections', {}); o[d.storageKey] = det.open; store.set('sections', o);
       }));
       root.appendChild(det);
       sec = det.querySelector('.body');
@@ -128,7 +128,7 @@ export function buildControls(onChange) {
       el.innerHTML = `<label><input type="checkbox" id="p-${d.id}" ${d.val ? 'checked' : ''}> ${t(d.label)}</label>${info}`;
     } else if (d.type === 'orient') { // a small 3D view of the model (js/orient.js); the value sits in a hidden input
       el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span><span class="val">
-        <button class="reset" title="${t('Back to Auto')}" aria-label="${t('Back to Auto')}">↺</button></span></div>
+        <button class="reset" title="${t('resetAuto')}" aria-label="${t('resetAuto')}">↺</button></span></div>
         <div class="orientBox" id="box-${d.id}"></div><input type="hidden" id="p-${d.id}" value="${d.val}">`;
       el.querySelector('.reset').onclick = () => { setParam(d.id, 'auto'); onChange(d.id); };
     } else if (d.type === 'select') {
@@ -136,7 +136,7 @@ export function buildControls(onChange) {
         d.options.map(([v, text]) => `<option value="${v}" ${v === d.val ? 'selected' : ''}>${t(text)}</option>`).join('') + `</select>`;
     } else {
       el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span><span class="val">
-        <button class="reset" title="${t('Reset to default')}" aria-label="${t('Reset {label}', { label: t(d.label) })}">↺</button><output id="o-${d.id}"></output></span></div>
+        <button class="reset" title="${t('resetDefault')}" aria-label="${t('resetSetting', { label: t(d.label) })}">↺</button><output id="o-${d.id}"></output></span></div>
         <input type="range" id="p-${d.id}" min="${d.min}" max="${d.max}" step="${d.step}" value="${d.val}" autocomplete="off">`;
       el.querySelector('.reset').onclick = () => { setParam(d.id, defaultOf(d)); saveSetting(d); onChange(d.id); };
     }

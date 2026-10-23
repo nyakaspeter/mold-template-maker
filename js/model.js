@@ -33,7 +33,7 @@ export function buildModel(hf, p) {
   }
   let any = false;
   for (let k = 0; k < N; k++) if (mask[k]) { any = true; break; }
-  if (!any) throw new Error(t('No shape found — try another background tolerance.'));
+  if (!any) throw new Error(t('noShape'));
 
   // an STL's edge is a wall, not a slope down to zero: carry the edge height outward so the
   // outline's top edge doesn't zigzag between the wall height and zero

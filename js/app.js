@@ -37,8 +37,8 @@ const size3 = (d, h) => `${f1(d[0])} × ${f1(d[1])} × ${f1(h)} mm`;
 function updateCaption() {
   const dl = $('#dl');
   if (step === 0 && S.kind === 'image') {
-    const why = t('Darkened parts are left out. Paint to light up what belongs to the object; hold {shift} while painting to darken what doesn\'t. Applied when you switch stage.',
-      { shift: `<strong>${t('Shift')}</strong>` });
+    const why = t('outlineHelp',
+      { shift: `<strong>${t('shiftKey')}</strong>` });
     $('#caption').innerHTML = `<span class="why">${why}</span>`;
     dl.hidden = true; return;
   }
@@ -46,9 +46,9 @@ function updateCaption() {
   const s = M.stats, parts = M.parts || [{ ...s, B: M.B }]; // two halves: both sizes
   const sizes = (f) => parts.map(f).join(' + ');
   const [spec, label] = { // the stage's name is already on its tab
-    1: [t('{size} · about {ml} ml of casting material', { size: sizes((q) => size3(q.obj, q.objH)), ml: f1(s.castMl) }), 'Download object STL'],
-    2: [t('{size} · needs about {ml} ml (≈ {g} g) of silicone', { size: sizes((q) => size3(q.tpl, q.tplH)), ml: Math.ceil(s.silMl), g: Math.ceil(s.silMl * 1.1) }), 'Download template STL'],
-    3: [t('{size} · holds about {ml} ml', { size: sizes((q) => size3(q.sil, q.tplH - q.B)), ml: f1(s.castMl) }), 'Download mold STL'],
+    1: [t('castingStats', { size: sizes((q) => size3(q.obj, q.objH)), ml: f1(s.castMl) }), 'downloadObject'],
+    2: [t('templateStats', { size: sizes((q) => size3(q.tpl, q.tplH)), ml: Math.ceil(s.silMl), g: Math.ceil(s.silMl * 1.1) }), 'downloadTemplate'],
+    3: [t('moldStats', { size: sizes((q) => size3(q.sil, q.tplH - q.B)), ml: f1(s.castMl) }), 'downloadMold'],
   }[step];
   $('#caption').innerHTML = `<span class="spec">${spec}</span>`;
   dl.textContent = t(label); dl.hidden = false;
@@ -63,9 +63,9 @@ function applyStyle(type) {
 // the Auto choices name what was detected, e.g. "Auto (Flat cartoon)", "Auto (Yes)" (Orientation shows a reset button)
 function autoLabel() {
   const o = $('#p-picType option[value="auto"]'), d = PARAMS.find((x) => x.id === 'picType');
-  if (o && S.detected) o.textContent = t('Auto ({type})', { type: t(d.options.find(([v]) => v === S.detected)[1]) });
+  if (o && S.detected) o.textContent = t('autoDetected', { type: t(d.options.find(([v]) => v === S.detected)[1]) });
   const c = $('#p-split option[value="auto"]');
-  if (c && S.stlAuto) c.textContent = t('Auto ({type})', { type: t(stlChoice({ ...readParams(), split: 'auto' }).split ? 'Yes' : 'No') });
+  if (c && S.stlAuto) c.textContent = t('autoDetected', { type: t(stlChoice({ ...readParams(), split: 'auto' }).split ? 'yes' : 'no') });
 }
 // an orientation picked in the 3D view of the Orientation setting: Auto's own position is Auto again, and the
 // position already in use changes nothing
@@ -147,7 +147,7 @@ async function loadFile(file) {
       const bmp = await createImageBitmap(file);
       loadSource('image', bmp, file.name);
     }
-  } catch (e) { status(t('Could not read that file: ') + e.message, true); }
+  } catch (e) { status(t('readFailed') + e.message, true); }
 }
 
 // ---------------------------------------------------------------- building
@@ -159,7 +159,7 @@ function schedule(delay = 220) {
   clearTimeout(timer);
   const my = ++gen; // invalidate older results as soon as a committed setting changes
   if (!S.kind) return;
-  status(t('Building model…')); S.building = true;
+  status(t('buildingModel')); S.building = true;
   if (step === 0) drawEditor();
   const p = readParams(); // snapshot committed settings; later slider drags are only previews
   timer = setTimeout(() => regen(my, p), delay);
@@ -202,7 +202,7 @@ async function regen(my, p) {
     const model = result.model;
     showModel(model, $('#paint').checked, model.notFlat && $('#flipObj').checked);
     setStep(step);
-    status(result.warning || t('Built in {ms} ms', { ms: result.elapsed }), !!result.warning);
+    status(result.warning || t('buildTime', { ms: result.elapsed }), !!result.warning);
   } catch (e) {
     if (my !== gen) return;
     console.error(e); status(e.message, true); S.building = false;
@@ -225,9 +225,9 @@ function applyLang() {
     if (el.hasAttribute('aria-label')) el.setAttribute('aria-label', t(el.dataset.tTitle));
   });
   document.querySelectorAll('[data-t-aria]').forEach((el) => el.setAttribute('aria-label', t(el.dataset.tAria)));
-  view.dataset.drop = t('Drop to load');
+  view.dataset.drop = t('dropToLoad');
   if (!$('#status').classList.contains('err')) $('#status').textContent = ''; // last message was in the old language
-  if (!S.kind) $('#srcName').textContent = t('No file loaded');
+  if (!S.kind) $('#srcName').textContent = t('noFile');
   const built = !!$('#p-width'), values = built ? readParams() : null;
   buildControls(settingChanged);
   attachOrient($('#box-stlUp'), pickSide);

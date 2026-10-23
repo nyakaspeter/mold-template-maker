@@ -41,7 +41,7 @@ self.onmessage = async ({ data: job }) => {
     if (notFlat && !split) model.geo.object = originalMesh(geom, p);
     const result = { id, model, outline: kind === 'image' ? { W: hf.W, H: hf.H, mask: hf.mask, rect: hf.rect } : null,
       splitAt: autoCut ? p.splitAt : null, elapsed: Math.round(performance.now() - start),
-      warning: wantAI && aiFailed ? t('AI depth failed — continuing without it. ') : null };
+      warning: wantAI && aiFailed ? t('depthFailed') : null };
     // Transfer mesh buffers rather than copying large generated models back to the page.
     const buffers = new Set();
     const collect = (value) => {
