@@ -21,7 +21,13 @@ export const PARAMS = [
     hint: 'Removes enclosed background, like the space between legs. Higher opens more, 0 keeps everything filled.' },
   { id: 'maskSmooth', label: 'Outline smoothing', unit: 'mm', min: 0, max: 3, step: 0.1, val: 0.2 },
 
-  { g: 'Relief' },
+  { g: 'Relief', only: 'file' },
+  { id: 'picType', label: 'Picture type', type: 'select', val: 'auto', only: 'image',
+    options: [['auto', 'Auto'], ['heightmap', 'Height map'], ['lineart', 'Line art / sketch'], ['flat', 'Flat cartoon'], ['shaded', 'Shaded render / painting']],
+    hint: 'What kind of picture this is; it decides how it is turned into 3D. Auto guesses; pick another type if the guess is wrong.' },
+  { id: 'depthModel', label: 'Depth model', type: 'buttons', val: '1', only: 'image', modes: 'ai cartoon', keep: true,
+    options: [['1', '1'], ['2', '2'], ['3', '3']],
+    hint: 'Which AI model estimates depth. 1 is the smallest (about 50 MB to download once); 2 and 3 are larger (about 195 MB each) and can give somewhat better depth.' },
   { id: 'colorTol', label: 'Colour area tolerance', min: 4, max: 60, step: 1, val: 16, only: 'image', modes: 'cartoon',
     hint: 'Lower = more, smaller areas (more detail). Higher = merges shading.' },
   { id: 'simplify', label: 'Smooth out texture', unit: '', min: 0, max: 4, step: 1, val: 0, only: 'image', modes: 'cartoon',
@@ -66,7 +72,7 @@ export const store = {
   get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage blocked: not remembered */ } },
 };
-export const kept = (d) => d.id && d.group !== 'Outline' && d.group !== 'Relief';
+export const kept = (d) => d.id && (d.keep || (d.group !== 'Outline' && d.group !== 'Relief'));
 export const perKind = (d) => d.id in DEFAULTS.image || d.id in DEFAULTS.stl;
 export function savedValue(d, kind) {
   const saved = store.get('settings', {}), v = perKind(d) ? saved[kind]?.[d.id] : saved[d.id];
@@ -105,7 +111,17 @@ export function buildControls(onChange) {
     // the description sits behind an ⓘ after the name and shows as a tooltip
     const info = d.hint ? `<span class="info" tabindex="0" aria-label="${t(d.hint).replace(/"/g, '&quot;')}">i</span>` : '';
     if (d.type === 'check') {
-      el.innerHTML = `<label><input type="checkbox" id="p-${d.id}" ${d.val ? 'checked' : ''}> ${t(d.label)}</label>`;
+      el.innerHTML = `<label><input type="checkbox" id="p-${d.id}" ${d.val ? 'checked' : ''}> ${t(d.label)}</label>${info}`;
+    } else if (d.type === 'buttons') { // a row of buttons, one per choice; the value sits in a hidden input
+      el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span></div><div class="choices" role="radiogroup">` +
+        d.options.map(([v, text]) => `<button type="button" role="radio" data-v="${v}">${t(text)}</button>`).join('') +
+        `</div><input type="hidden" id="p-${d.id}" value="${d.val}">`;
+      el.querySelectorAll('.choices button').forEach((b) => (b.onclick = () => {
+        const input = el.querySelector('input');
+        if (input.value === b.dataset.v) return;
+        input.value = b.dataset.v;
+        input.dispatchEvent(new Event('input'));
+      }));
     } else if (d.type === 'select') {
       el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span></div><select id="p-${d.id}" autocomplete="off">` +
         d.options.map(([v, text]) => `<option value="${v}" ${v === d.val ? 'selected' : ''}>${t(text)}</option>`).join('') + `</select>`;
@@ -128,6 +144,13 @@ export function buildControls(onChange) {
 }
 export const defaultOf = (d) => (shownKind === 'image' && S.auto && d.id in S.auto ? S.auto[d.id] : DEFAULTS[shownKind]?.[d.id] ?? d.val);
 export function showValue(d) {
+  if (d.type === 'buttons') {
+    const v = $('#p-' + d.id).value;
+    $('#p-' + d.id).closest('.ctl').querySelectorAll('.choices button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.v === v); b.setAttribute('aria-checked', b.dataset.v === v);
+    });
+    return;
+  }
   const o = $('#o-' + d.id);
   if (!o) return;
   const v = parseFloat($('#p-' + d.id).value);
@@ -144,7 +167,7 @@ export function readParams() {
   for (const d of PARAMS) {
     if (!d.id) continue;
     const el = $('#p-' + d.id);
-    p[d.id] = d.type === 'check' ? el.checked : d.type === 'select' ? el.value : parseFloat(el.value);
+    p[d.id] = d.type === 'check' ? el.checked : d.type === 'select' || d.type === 'buttons' ? el.value : parseFloat(el.value);
   }
   return p;
 }
@@ -152,9 +175,11 @@ export let shownKind = 'image';
 export function showFor(kind = shownKind) {
   shownKind = kind;
   for (const d of PARAMS) if (d.id) showValue(d); // defaults differ per kind
-  const mode = S.method;
+  // until a file is loaded, only settings that apply to every file show (only: 'file' = any loaded file)
+  const mode = S.method, loaded = S.kind ? kind : null;
   document.querySelectorAll('[data-only], [data-modes]').forEach((el) => {
-    const ok = (!el.dataset.only || el.dataset.only === kind) && (!el.dataset.modes || el.dataset.modes.split(' ').includes(mode));
+    const only = el.dataset.only;
+    const ok = (!only || only === loaded || (only === 'file' && loaded)) && (!el.dataset.modes || el.dataset.modes.split(' ').includes(mode));
     el.style.display = ok ? '' : 'none';
   });
 }

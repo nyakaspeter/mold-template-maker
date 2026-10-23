@@ -1,6 +1,14 @@
 // English text is the key; German and Hungarian translations. {name} marks a value filled in at run time.
 export const I18N = {
   de: {
+    'Picture type': 'Bildart', 'Auto': 'Automatisch', 'Auto ({type})': 'Automatisch ({type})',
+    'Height map': 'Höhenkarte', 'Line art / sketch': 'Strichzeichnung / Skizze', 'Flat cartoon': 'Flacher Cartoon',
+    'Shaded render / painting': 'Schattiertes Rendering / Gemälde',
+    'What kind of picture this is; it decides how it is turned into 3D. Auto guesses; pick another type if the guess is wrong.':
+      'Welche Art Bild das ist; davon hängt ab, wie es zu 3D wird. Automatisch rät; wähle eine andere Art, wenn die Vermutung falsch ist.',
+    'Depth model': 'Tiefenmodell',
+    'Which AI model estimates depth. 1 is the smallest (about 50 MB to download once); 2 and 3 are larger (about 195 MB each) and can give somewhat better depth.':
+      'Welches KI-Modell die Tiefe schätzt. 1 ist das kleinste (einmalig ca. 50 MB Download); 2 und 3 sind größer (je ca. 195 MB) und können etwas bessere Tiefe liefern.',
     'Size': 'Größe', 'Outline': 'Umriss', 'Relief': 'Relief', 'Final object': 'Endobjekt', 'Mold template': 'Formvorlage',
     'Object width': 'Objektbreite', 'Scale': 'Maßstab', 'Which side faces up': 'Welche Seite zeigt nach oben',
     '+Z (normal)': '+Z (normal)', '−Z (upside down)': '−Z (kopfüber)',
@@ -60,6 +68,14 @@ export const I18N = {
     'No shape found — try another background tolerance.': 'Keine Form gefunden – versuche eine andere Hintergrundtoleranz.',
   },
   hu: {
+    'Picture type': 'Kép típusa', 'Auto': 'Automatikus', 'Auto ({type})': 'Automatikus ({type})',
+    'Height map': 'Magasságtérkép', 'Line art / sketch': 'Vonalrajz / vázlat', 'Flat cartoon': 'Sima színezésű rajz',
+    'Shaded render / painting': 'Árnyalt render / festmény',
+    'What kind of picture this is; it decides how it is turned into 3D. Auto guesses; pick another type if the guess is wrong.':
+      'Milyen fajta kép ez; ettől függ, hogyan lesz belőle 3D. Az automatikus becsül; válassz másikat, ha téves.',
+    'Depth model': 'Mélységmodell',
+    'Which AI model estimates depth. 1 is the smallest (about 50 MB to download once); 2 and 3 are larger (about 195 MB each) and can give somewhat better depth.':
+      'Melyik AI-modell becsüli a mélységet. Az 1-es a legkisebb (egyszeri kb. 50 MB letöltés); a 2-es és 3-as nagyobb (egyenként kb. 195 MB), és valamivel jobb mélységet adhat.',
     'Size': 'Méret', 'Outline': 'Körvonal', 'Relief': 'Dombormű', 'Final object': 'Kész tárgy', 'Mold template': 'Öntőforma-sablon',
     'Object width': 'Tárgy szélessége', 'Scale': 'Méretarány', 'Which side faces up': 'Melyik oldal néz felfelé',
     '+Z (normal)': '+Z (normál)', '−Z (upside down)': '−Z (fejjel lefelé)',

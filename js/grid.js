@@ -93,6 +93,20 @@ export function sampleImage(img, rect, W, H) {
   ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, W, H);
   return ctx.getImageData(0, 0, W, H).data;
 }
+// a { width, height, data } float map over rect (in its own pixels), resampled to W × H by area averaging
+export function sampleField(f, rect, W, H) {
+  const out = new Float32Array(W * H), sx = rect.w / W, sy = rect.h / H;
+  for (let j = 0; j < H; j++) {
+    const ya = Math.max(0, Math.floor(rect.y + j * sy)), yb = Math.min(f.height, Math.max(ya + 1, Math.ceil(rect.y + (j + 1) * sy)));
+    for (let i = 0; i < W; i++) {
+      const xa = Math.max(0, Math.floor(rect.x + i * sx)), xb = Math.min(f.width, Math.max(xa + 1, Math.ceil(rect.x + (i + 1) * sx)));
+      let s = 0, n = 0;
+      for (let y = ya; y < yb; y++) for (let x = xa; x < xb; x++) { s += f.data[y * f.width + x]; n++; }
+      out[j * W + i] = n ? s / n : 0;
+    }
+  }
+  return out;
+}
 export const lumAt = (px, k) => (0.299 * px[k * 4] + 0.587 * px[k * 4 + 1] + 0.114 * px[k * 4 + 2]) / 255;
 export const neighbours = (k, W, H) => {
   const i = k % W, j = (k / W) | 0;

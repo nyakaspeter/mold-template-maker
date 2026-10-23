@@ -13,8 +13,13 @@ render or painting, greyscale height map) and picks its settings; everything can
 Available in English, German and Hungarian.
 
 Everything runs in the browser; files are never uploaded. The 3D view uses [three.js](https://threejs.org), and depth
-for shaded pictures comes from [Depth Anything V2](https://huggingface.co/onnx-community/depth-anything-v2-small)
-via [transformers.js](https://huggingface.co/docs/transformers.js) (downloaded once, then cached by the browser).
+comes from [Depth Anything V2](https://huggingface.co/onnx-community/depth-anything-v2-small) via
+[transformers.js](https://huggingface.co/docs/transformers.js), on the graphics card (WebGPU) when there is one,
+otherwise on the CPU (downloaded once, then cached by the browser). On the graphics card a second, finer pass adds
+small detail such as noses, eyes and hair. The *Depth model* setting chooses between
+1: [Depth Anything V2 small](https://huggingface.co/onnx-community/depth-anything-v2-small) (default),
+2: [Depth Anything V2 base](https://huggingface.co/onnx-community/depth-anything-v2-base) and
+3: [Distill Any Depth base](https://huggingface.co/Ko033/distill-any-depth-base-onnx).
 
 ## Running it locally
 

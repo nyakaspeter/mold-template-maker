@@ -37,18 +37,40 @@ function updateCaption() {
   if (step === 0 && S.kind === 'image') {
     const why = t('Darkened parts are left out. Paint to light up what belongs to the object; hold {shift} while painting to darken what doesn\'t. Applied when you switch stage.',
       { shift: `<strong>${t('Shift')}</strong>` });
-    $('#caption').innerHTML = `<b>${t('Image')}</b><span class="why">${why}</span>`;
+    $('#caption').innerHTML = `<span class="why">${why}</span>`;
     dl.hidden = true; return;
   }
   if (!M) { $('#caption').innerHTML = ''; dl.hidden = true; return; }
   const s = M.stats;
-  const [title, spec, label] = {
-    1: ['Object', t('{size} · about {ml} ml of casting material', { size: size3(s.obj, s.objH), ml: f1(s.castMl) }), 'Download object STL'],
-    2: ['Template', t('{size} · needs about {ml} ml (≈ {g} g) of silicone', { size: size3(s.tpl, s.tplH), ml: Math.ceil(s.silMl), g: Math.ceil(s.silMl * 1.1) }), 'Download template STL'],
-    3: ['Mold', t('{size} · holds about {ml} ml', { size: size3(s.sil, s.tplH - M.B), ml: f1(s.castMl) }), 'Download mold STL'],
+  const [spec, label] = { // the stage's name is already on its tab
+    1: [t('{size} · about {ml} ml of casting material', { size: size3(s.obj, s.objH), ml: f1(s.castMl) }), 'Download object STL'],
+    2: [t('{size} · needs about {ml} ml (≈ {g} g) of silicone', { size: size3(s.tpl, s.tplH), ml: Math.ceil(s.silMl), g: Math.ceil(s.silMl * 1.1) }), 'Download template STL'],
+    3: [t('{size} · holds about {ml} ml', { size: size3(s.sil, s.tplH - M.B), ml: f1(s.castMl) }), 'Download mold STL'],
   }[step];
-  $('#caption').innerHTML = `<b>${t(title)}</b><span class="spec">${spec}</span>`;
+  $('#caption').innerHTML = `<span class="spec">${spec}</span>`;
   dl.textContent = t(label); dl.hidden = false;
+}
+
+// ---------------------------------------------------------------- picture type
+// The type decides the 3D method and the starting settings. Auto uses the detected type.
+function applyStyle(type) {
+  S.auto = STYLE_PRESETS[type]; S.method = { shaded: 'ai', heightmap: 'bright' }[type] || 'cartoon';
+  for (const [k, v] of Object.entries(S.auto)) setParam(k, v);
+}
+// the Auto choice names what was detected, e.g. "Auto (Flat cartoon)"
+function autoLabel() {
+  const o = $('#p-picType option[value="auto"]'), d = PARAMS.find((x) => x.id === 'picType');
+  if (o && S.detected) o.textContent = t('Auto ({type})', { type: t(d.options.find(([v]) => v === S.detected)[1]) });
+}
+// any setting changed: a new picture type first applies its method and settings
+function settingChanged() {
+  const type = readParams().picType;
+  if (S.kind === 'image' && type !== S.picType) {
+    S.picType = type;
+    applyStyle(type === 'auto' ? S.detected : type);
+    showFor();
+  }
+  schedule();
 }
 
 // ---------------------------------------------------------------- loading files
@@ -61,14 +83,14 @@ function loadSource(kind, data, name) {
   const kindChanged = kind !== prevKind;
   for (const d of PARAMS) {
     if (!d.id) continue;
-    const fresh = d.group === 'Outline' || d.group === 'Relief';
+    const fresh = (d.group === 'Outline' || d.group === 'Relief') && !d.keep;
     if (fresh) setParam(d.id, DEFAULTS[kind][d.id] ?? d.val);
     else if (kindChanged && perKind(d)) setParam(d.id, savedValue(d, kind));
   }
   if (kind === 'image') {
-    const a = analyzeImage(data);
-    S.auto = STYLE_PRESETS[a]; S.method = { shaded: 'ai', heightmap: 'bright' }[a] || 'cartoon';
-    for (const [k, v] of Object.entries(S.auto)) setParam(k, v);
+    S.detected = analyzeImage(data); S.picType = 'auto';
+    applyStyle(S.detected);
+    autoLabel();
   } else S.auto = null;
   showFor(kind);
   $('#srcName').textContent = name;
@@ -110,8 +132,8 @@ async function regen() {
   p.depthMode = S.method;
   try {
     const wantAI = S.kind === 'image' && S.method !== 'bright'; // the depth model is downloaded once, then cached
-    if (wantAI && !S.ai && !S.aiFailed) {
-      try { S.ai = await aiDepth(S.img, status); }
+    if (wantAI && (!S.ai || S.aiModel !== p.depthModel) && !S.aiFailed) {
+      try { S.ai = await aiDepth(S.img, status, p.depthModel); S.aiModel = p.depthModel; }
       catch (e) { S.aiFailed = true; console.error(e); status(t('AI depth failed — continuing without it. ') + e.message, true); }
       if (my !== gen) return;
     }
@@ -143,7 +165,8 @@ function applyLang() {
   if (!$('#status').classList.contains('err')) $('#status').textContent = ''; // last message was in the old language
   if (!S.kind) $('#srcName').textContent = t('No file loaded');
   const built = !!$('#p-width'), values = built ? readParams() : null;
-  buildControls(() => schedule());
+  buildControls(settingChanged);
+  autoLabel();
   if (values) for (const d of PARAMS) if (d.id) setParam(d.id, values[d.id]);
   showFor();
   updateCaption();

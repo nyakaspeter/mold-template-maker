@@ -1,8 +1,8 @@
 // Turning an image into heights: depth, cartoon colour areas, line grooves, surface detail.
-import { blur, distTo, smoothstep, fitGrid, sampleImage, lumAt, neighbours, maskBox } from './grid.js';
+import { blur, distTo, smoothstep, fitGrid, sampleImage, sampleField, lumAt, neighbours, maskBox } from './grid.js';
 import { editCells, shapeMask, reopenBackgroundHoles } from './outline.js';
 
-export function hfFromImage(img, aiCanvas, p, edit) {
+export function hfFromImage(img, aiDepth, p, edit) {
   // low-resolution pass over the whole image: the background colour, and where the shape is
   const pw = 400, ph = Math.max(8, Math.round(pw * img.height / img.width));
   const full = { x: 0, y: 0, w: img.width, h: img.height };
@@ -33,11 +33,9 @@ export function hfFromImage(img, aiCanvas, p, edit) {
 
   // depth (AI, or brightness) normalised to 0..1 inside the shape (2nd..98th percentile)
   let val = lum;
-  if (aiCanvas) {
-    const ax = aiCanvas.width / img.width, ay = aiCanvas.height / img.height;
-    const dp = sampleImage(aiCanvas, { x: rect.x * ax, y: rect.y * ay, w: rect.w * ax, h: rect.h * ay }, W, H);
-    val = new Float32Array(N);
-    for (let k = 0; k < N; k++) val[k] = dp[k * 4] / 255;
+  if (aiDepth) {
+    const ax = aiDepth.width / img.width, ay = aiDepth.height / img.height;
+    val = sampleField(aiDepth, { x: rect.x * ax, y: rect.y * ay, w: rect.w * ax, h: rect.h * ay }, W, H);
     // in drawings the paper inside the outlines looks as far away as the background, so only shaded images
     if (p.depthMode === 'ai' && p.reopen > 0) reopenBackgroundHoles(mask, val, W, H, res, p.reopen);
   }
@@ -58,7 +56,7 @@ export function hfFromImage(img, aiCanvas, p, edit) {
   const lines = inkLines(lum, mask, W, H, res, p.lineDark);
   let relief;
   if (p.depthMode === 'cartoon') {
-    if (!aiCanvas) depth01.fill(0);
+    if (!aiDepth) depth01.fill(0);
     relief = cartoonRelief(px, mask, lines, depth01, W, H, res, p);
   } else {
     relief = new Float32Array(N);
