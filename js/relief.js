@@ -1,6 +1,7 @@
 // Turning an image into heights: depth, cartoon colour areas, line grooves, surface detail.
 import { blur, distTo, smoothstep, fitGrid, sampleImage, sampleField, lumAt, neighbours, maskBox } from './grid.js';
 import { editCells, shapeMask, reopenBackgroundHoles } from './outline.js';
+import { sculptRelief } from './sculpt.js';
 
 export function hfFromImage(img, aiDepth, p, edit) {
   // low-resolution pass over the whole image: the background colour, and where the shape is
@@ -12,12 +13,12 @@ export function hfFromImage(img, aiDepth, p, edit) {
   let box = pb ? { x0: pb.x0 * sx, y0: pb.y0 * sy, x1: pb.x1 * sx, y1: pb.y1 * sy } : { x0: 0, y0: 0, x1: img.width, y1: img.height };
   // full pass on the shape plus a margin; the grid is scaled so the shape itself is "Object width" wide.
   // If the full pass finds a different extent than the quick one, rescale once.
-  let W, H, res, px, mask, N, rect;
+  let W, H, res, px, mask, N, rect, mmPerPx;
   for (let pass = 0; pass < 2; pass++) {
     const m = 0.03 * Math.max(img.width, img.height);
     rect = { x: Math.max(0, box.x0 - m), y: Math.max(0, box.y0 - m) };
     rect.w = Math.min(img.width, box.x1 + m) - rect.x; rect.h = Math.min(img.height, box.y1 + m) - rect.y;
-    const mmPerPx = p.width / (box.x1 - box.x0);
+    mmPerPx = p.width / (box.x1 - box.x0);
     ({ W, H, res } = fitGrid(rect.w * mmPerPx, rect.h * mmPerPx, p.res));
     px = sampleImage(img, rect, W, H); N = W * H;
     mask = shapeMask(px, W, H, { ...q, cellsPerMm: 1 / res, edit: editCells(edit, img, rect, W, H) });
@@ -33,11 +34,35 @@ export function hfFromImage(img, aiDepth, p, edit) {
 
   // depth (AI, or brightness) normalised to 0..1 inside the shape (2nd..98th percentile)
   let val = lum;
+  const sculpt = p.depthMode === 'sculpt' && aiDepth?.geo;
+  let geo = null;
   if (aiDepth) {
     const ax = aiDepth.width / img.width, ay = aiDepth.height / img.height;
-    val = sampleField(aiDepth, { x: rect.x * ax, y: rect.y * ay, w: rect.w * ax, h: rect.h * ay }, W, H);
-    // in drawings the paper inside the outlines looks as far away as the background, so only shaded images
-    if (p.depthMode === 'ai' && p.reopen > 0) reopenBackgroundHoles(mask, val, W, H, res, p.reopen);
+    const r = { x: rect.x * ax, y: rect.y * ay, w: rect.w * ax, h: rect.h * ay };
+    const field = (data) => sampleField({ width: aiDepth.width, height: aiDepth.height, data }, r, W, H);
+    val = field(aiDepth.data);
+    // in drawings the paper inside the outlines looks as far away as the background, so only shaded images, and not
+    // after an AI cut-out (it has its gaps). MoGe's true depth makes eye sockets and nostrils nearly as deep as the
+    // background: there a gap has to be much closer to the background's depth before it is opened
+    if ((p.depthMode === 'ai' || p.depthMode === 'sculpt') && p.reopen > 0 && !p.cutout) {
+      reopenBackgroundHoles(mask, val, W, H, res, p.depthMode === 'sculpt' ? 0.4 * p.reopen : p.reopen);
+    }
+    if (sculpt) {
+      const g = aiDepth.geo;
+      geo = { height: field(g.height), slopeX: field(g.slopeX), slopeY: field(g.slopeY) };
+      if (g.fineX && p.fineDetail > 0) { // finer detail from Depth Anything (see sculpt.js fuseDepthDetail)
+        const fx = field(g.fineX), fy = field(g.fineY);
+        for (let k = 0; k < N; k++) { geo.slopeX[k] += p.fineDetail * fx[k]; geo.slopeY[k] += p.fineDetail * fy[k]; }
+      }
+    }
+  }
+  if (geo) {
+    // world units to mm at the shape's typical depth (a pixel there is depth / pxPerDepth world units wide)
+    const zs = [];
+    for (let k = 0; k < N; k += Math.max(1, Math.floor(N / 20000))) if (mask[k]) zs.push(-geo.height[k]);
+    zs.sort((a, b) => a - b);
+    const zRef = zs.length ? zs[zs.length >> 1] : 1, mmPerWorld = mmPerPx * aiDepth.geo.pxPerDepth / Math.max(1e-9, zRef);
+    for (let k = 0; k < N; k++) geo.height[k] *= mmPerWorld;
   }
   const sample = [];
   const stride = Math.max(1, Math.floor(N / 60000));
@@ -46,19 +71,26 @@ export function hfFromImage(img, aiDepth, p, edit) {
   const lo = sample.length ? sample[Math.floor(sample.length * 0.02)] : 0;
   const hi = sample.length ? sample[Math.floor(sample.length * 0.98)] : 1;
   const span = Math.max(1e-6, hi - lo);
-  const depth01 = new Float32Array(N);
+  // the nearest 2 % (a nose, a fingertip) is eased in above the range instead of cut off flat; the tallest point
+  // is then the top of the range
+  const knee = 0.08, depth01 = new Float32Array(N);
+  let top = 1;
   for (let k = 0; k < N; k++) {
     if (!mask[k]) continue;
-    const t = Math.min(1, Math.max(0, (val[k] - lo) / span));
+    let t = Math.max(0, (val[k] - lo) / span);
+    if (t > 1) t = 1 + knee * (1 - Math.exp(-(t - 1) / knee));
     depth01[k] = t;
+    if (t > top) top = t;
   }
+  for (let k = 0; k < N; k++) depth01[k] /= top;
 
   const lines = inkLines(lum, mask, W, H, res, p.lineDark);
   let relief;
   if (p.depthMode === 'cartoon') {
     if (!aiDepth) depth01.fill(0);
     relief = cartoonRelief(px, mask, lines, depth01, W, H, res, p);
-  } else {
+  } else if (geo) relief = sculptRelief(geo, mask, W, H, res, p);
+  else {
     relief = new Float32Array(N);
     for (let k = 0; k < N; k++) if (mask[k]) relief[k] = Math.pow(depth01[k], p.gamma) * p.reliefH;
   }

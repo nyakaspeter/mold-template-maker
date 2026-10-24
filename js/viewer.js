@@ -34,9 +34,14 @@ function geomOf(m) {
   g.computeBoundingSphere();
   return g;
 }
+// nothing on show (a newly loaded file that could not be built)
+export function clearModel() {
+  M = null;
+  if (root) { root.traverse((o) => o.geometry && o.geometry.dispose()); objUp?.dispose(); objDown?.dispose(); objDown = null; scene.remove(root); root = null; }
+}
 export function showModel(model, painted, upsideDown) {
+  clearModel();
   M = model;
-  if (root) { root.traverse((o) => o.geometry && o.geometry.dispose()); objUp?.dispose(); objDown?.dispose(); objDown = null; scene.remove(root); }
   root = new THREE.Group(); scene.add(root);
   const g = {};
   for (const k in M.geo) g[k] = geomOf(M.geo[k]);

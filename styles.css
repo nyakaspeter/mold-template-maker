@@ -29,7 +29,10 @@ h1 .hbtns { display: flex; gap: 6px; align-items: center; }
 #flag svg { display: block; width: 20px; height: 14px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25); }
 h1 button.icon { padding: 5px 7px; display: grid; place-items: center; color: var(--muted); }
 h1 button.icon:hover { color: var(--ink); }
-#srcName { color: var(--muted); font-size: 12px; word-break: break-all; }
+#srcName { color: var(--muted); font-size: 12px; word-break: break-all; flex: 1; }
+.subhead { display: flex; align-items: flex-start; gap: 8px; }
+.subhead .reset { margin-right: 8px; } /* under the browse button */
+.subhead .reset.on { visibility: visible; }
 button { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--ink);
   border-radius: 8px; padding: 6px 10px; cursor: pointer; }
 button:hover { border-color: var(--muted); }

@@ -62,7 +62,8 @@ export function signedDist(mask, W, H) {
   for (let k = 0; k < N; k++) s[k] = mask[k] ? toOut[k] - 0.5 : -(toIn[k] - 0.5);
   return s;
 }
-export function fillHoles(mask, W, H) {
+// enclosed gaps become part of the shape; with maxArea only gaps of up to that many cells (specks)
+export function fillHoles(mask, W, H, maxArea = Infinity) {
   const seen = new Uint8Array(W * H), stack = [];
   const push = (k) => { if (!mask[k] && !seen[k]) { seen[k] = 1; stack.push(k); } };
   for (let i = 0; i < W; i++) { push(i); push((H - 1) * W + i); }
@@ -71,7 +72,19 @@ export function fillHoles(mask, W, H) {
     const k = stack.pop(), i = k % W, j = (k / W) | 0;
     if (i > 0) push(k - 1); if (i < W - 1) push(k + 1); if (j > 0) push(k - W); if (j < H - 1) push(k + W);
   }
-  for (let k = 0; k < W * H; k++) if (!seen[k]) mask[k] = 1;
+  if (maxArea === Infinity) { for (let k = 0; k < W * H; k++) if (!seen[k]) mask[k] = 1; return; }
+  for (let s = 0; s < W * H; s++) {
+    if (seen[s] || mask[s]) continue;
+    const cells = [s];
+    seen[s] = 1;
+    for (let c = 0; c < cells.length; c++) {
+      const k = cells[c], i = k % W;
+      for (const q of [i > 0 ? k - 1 : -1, i < W - 1 ? k + 1 : -1, k - W, k + W]) {
+        if (q >= 0 && q < W * H && !seen[q] && !mask[q]) { seen[q] = 1; cells.push(q); }
+      }
+    }
+    if (cells.length <= maxArea) for (const k of cells) mask[k] = 1;
+  }
 }
 export const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 

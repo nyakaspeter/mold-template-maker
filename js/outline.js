@@ -19,19 +19,25 @@ export function shapeMask(px, W, H, p) {
   if (clear > N * 0.01) {
     for (let k = 0; k < N; k++) { mask[k] = px[k * 4 + 3] > 128 ? 1 : 0; open[k] = 1 - mask[k]; }
     if (edit) for (let k = 0; k < N; k++) if (edit[k]) { mask[k] = edit[k] === 1 ? 1 : 0; open[k] = 1 - mask[k]; }
-    fillHoles(mask, W, H);
+    // a transparent inside is part of the shape (a drawing's paper), but where the AI cut the subject out, an
+    // enclosed gap is background showing through (between arm and body): only specks are filled
+    fillHoles(mask, W, H, p.cutout ? Math.max(16, (1.5 * (p.cellsPerMm || 1)) ** 2) : Infinity);
   } else {
-    const rs = [], gs = [], bs = [];
-    const add = (k) => { rs.push(px[k * 4]); gs.push(px[k * 4 + 1]); bs.push(px[k * 4 + 2]); };
-    for (let i = 0; i < W; i++) { add(i); add((H - 1) * W + i); }
-    for (let j = 0; j < H; j++) { add(j * W); add(j * W + W - 1); }
+    const edgeCells = [];
+    for (let i = 0; i < W; i++) edgeCells.push(i, (H - 1) * W + i);
+    for (let j = 0; j < H; j++) edgeCells.push(j * W, j * W + W - 1);
     const med = (a) => a.sort((x, y) => x - y)[a.length >> 1];
-    bgc = p.bgc || [med(rs), med(gs), med(bs)];
+    bgc = p.bgc || [0, 1, 2].map((c) => med(edgeCells.map((k) => px[k * 4 + c])));
+    // the tolerance grows with how far the backdrop's own colours stray (grain, uneven light): from the edge's
+    // typical spread, not its extremes, where the subject may touch the frame
+    const spread = edgeCells.map((k) => Math.hypot(px[k * 4] - bgc[0], px[k * 4 + 1] - bgc[1], px[k * 4 + 2] - bgc[2]))
+      .sort((a, b) => a - b)[Math.floor(edgeCells.length * 0.75)];
+    const tol = p.tol ?? Math.min(110, 55 + 2 * spread);
     const near = (k, c, tol) => {
       const dr = px[k * 4] - c[0], dg = px[k * 4 + 1] - c[1], db = px[k * 4 + 2] - c[2];
       return dr * dr + dg * dg + db * db <= tol * tol;
     };
-    const bgLike = (k) => px[k * 4 + 3] <= 128 || near(k, bgc, p.tol);
+    const bgLike = (k) => px[k * 4 + 3] <= 128 || near(k, bgc, tol);
     const shadow = findGroundShadow(px, W, H, bgc);
     // soft shadow edges: colours on the line between the shadow tone and the background
     const shadowLike = (k) => {
@@ -81,7 +87,7 @@ export function shapeMask(px, W, H, p) {
     const drift = (k, q) => {
       if ((dFig && dFig[q] <= gap) || (edit && edit[q] === 1)) return false;
       for (const a of soft) if (Math.abs(a[k] - a[q]) > 4) return false;
-      return near(q, bgc, p.tol * 2.5);
+      return near(q, bgc, tol * 2.5);
     };
     while (stack.length) {
       const k = stack.pop();

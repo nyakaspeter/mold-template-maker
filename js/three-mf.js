@@ -4,6 +4,9 @@ import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
 
 const productionNS = 'http://schemas.microsoft.com/3dmanufacturing/production/2015/06';
 const units = { micron: 0.001, millimeter: 1, centimeter: 10, inch: 25.4, foot: 304.8, meter: 1000 };
+// Errors the person can do something about carry a message key (app.js shows it translated); any other error means a
+// damaged or invalid file, and its English text is only for the console.
+const userError = (key, params, detail) => Object.assign(new Error(detail), { key, params });
 
 export function parse3MF(data) {
   const archive = unzipSync(new Uint8Array(data)), models = new Map();
@@ -37,7 +40,7 @@ export function parse3MF(data) {
     const root = xml(path).documentElement;
     if (root.localName !== 'model') throw new Error(`Invalid 3MF model: ${path}`);
     const unit = root.getAttribute('unit') || 'millimeter', scale = units[unit];
-    if (!scale) throw new Error(`Unsupported 3MF unit: ${unit}`);
+    if (!scale) throw userError('threeMFUnit', { unit }, `Unsupported 3MF unit: ${unit}`);
     const resources = children(root, 'resources')[0];
     const result = { root, scale, objects: new Map(resources ? children(resources, 'object').map((o) => [o.getAttribute('id'), o]) : []) };
     models.set(path, result);
@@ -91,7 +94,7 @@ export function parse3MF(data) {
     matrix.scale(new Vector3(ratio, ratio, ratio));
     visit(path, item.getAttribute('objectid'), matrix);
   }
-  if (!positions.length || positions.some((v) => !Number.isFinite(v))) throw new Error('The 3MF contains no valid mesh triangles.');
+  if (!positions.length || positions.some((v) => !Number.isFinite(v))) throw userError('threeMFEmpty', {}, 'The 3MF contains no valid mesh triangles.');
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();

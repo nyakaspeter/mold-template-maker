@@ -4,11 +4,11 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { $ } from './dom.js';
 import { S } from './state.js';
 import { t, getLang, setLang, LANGS, FLAGS } from './i18n.js';
-import { PARAMS, DEFAULTS, kept, perKind, savedValue, buildControls, setParam, readParams, showFor } from './settings.js';
-import { STYLE_PRESETS, analyzeImage } from './style.js';
+import { PARAMS, DEFAULTS, GEOMETRY_MODELS, store, defaultOf, kept, perKind, savedValue, buildControls, setParam, readParams, showFor } from './settings.js';
+import { STYLE_PRESETS, SHADED, analyzeImage } from './style.js';
 import { detectSTL } from './stl.js';
 import { buildInWorker } from './build-client.js?v=3';
-import { M, showModel, fitView, requestFit, showStage, setPainted, setUpsideDown, exportStage, camera, controls } from './viewer.js';
+import { M, showModel, clearModel, fitView, requestFit, showStage, setPainted, setUpsideDown, exportStage, camera, controls } from './viewer.js';
 import { initEditor, resetEditor, setEditorOutline, drawEditor } from './editor.js';
 import { attachOrient, setOrientModel, showOrient, dropOrient } from './orient.js';
 
@@ -55,15 +55,39 @@ function updateCaption() {
 }
 
 // ---------------------------------------------------------------- picture type
-// The type decides the 3D method and the starting settings. Auto uses the detected type.
+// The type decides the 3D method and the starting settings. Auto uses the detected type. With a depth model that
+// estimates the surface (MoGe-2) every picture but a height map is sculpted from it. All but photos keep their line
+// and colour grooves (drawn or painted features such as pupils or polka dots are no shape); drawings and paintings
+// open no gaps (eye whites in deep sockets look like background).
+// The Depth model's Auto: MoGe-2 Small sculpts photos, renders, paintings and softly shaded cartoons; line art and
+// cartoons in pure flat colour (icons) keep the colour-area method with Depth Anything V2 Small, which keeps their
+// shapes crisp where MoGe finds no 3D, while shaded cartoons would split into many small cushions there.
+const modelFor = (type, depthModel) => (depthModel !== 'auto' ? depthModel
+  : SHADED.includes(type) || (type === 'flat' && S.shading >= 0.15) ? '4' : '1');
+const methodFor = (type, depthModel) => {
+  const m = type === 'heightmap' ? 'bright' : SHADED.includes(type) ? 'ai' : 'cartoon';
+  return m !== 'bright' && GEOMETRY_MODELS.includes(modelFor(type, depthModel)) ? 'sculpt' : m;
+};
+// The subject is cut out by AI in photos and wherever the picture's edge isn't a plain backdrop; on a plain backdrop
+// the colour outline is exact, and the AI loses the thin strokes of line art and has no subject in a height map.
+const cutoutFor = (type) => !S.transparent && (type === 'photo' || (S.scene > 25 && type !== 'lineart' && type !== 'heightmap'));
 function applyStyle(type) {
-  S.auto = STYLE_PRESETS[type]; S.method = { shaded: 'ai', heightmap: 'bright' }[type] || 'cartoon';
-  for (const [k, v] of Object.entries(S.auto)) setParam(k, v);
+  S.method = methodFor(type, readParams().depthModel);
+  S.type = type; S.aiCutout = cutoutFor(type);
+  const drawn = !SHADED.includes(type) || type === 'painting';
+  S.auto = S.method === 'sculpt' ? { ...STYLE_PRESETS[type], ...STYLE_PRESETS.sculpt, ...(drawn && { reopen: 0 }),
+    ...(type !== 'photo' && { lineDepth: STYLE_PRESETS[type].lineDepth, edgeDepth: STYLE_PRESETS[type].edgeDepth }) } : STYLE_PRESETS[type];
+  for (const [k, v] of Object.entries(S.auto)) if ($('#p-' + k)) setParam(k, v); // the rest are set automatically (regen)
 }
 // the Auto choices name what was detected, e.g. "Auto (Flat cartoon)", "Auto (Yes)" (Orientation shows a reset button)
 function autoLabel() {
   const o = $('#p-picType option[value="auto"]'), d = PARAMS.find((x) => x.id === 'picType');
   if (o && S.detected) o.textContent = t('autoDetected', { type: t(d.options.find(([v]) => v === S.detected)[1]) });
+  const m = $('#p-depthModel option[value="auto"]'), dm = PARAMS.find((x) => x.id === 'depthModel'), p = readParams();
+  if (m && S.detected) {
+    const used = modelFor(p.picType === 'auto' ? S.detected : p.picType, 'auto');
+    m.textContent = t('autoDetected', { type: t(dm.options.find(([v]) => v === used)[1]) });
+  }
   const c = $('#p-split option[value="auto"]');
   if (c && S.stlAuto) c.textContent = t('autoDetected', { type: t(stlChoice({ ...readParams(), split: 'auto' }).split ? 'yes' : 'no') });
 }
@@ -84,9 +108,11 @@ const stlMethod = (p) => (stlChoice(p).split ? (p.pins ? 'split-pins' : 'split')
 // any setting changed: a new picture type first applies its method and settings
 function settingChanged(id) {
   const p = readParams();
-  if (S.kind === 'image' && p.picType !== S.picType) {
+  const type = p.picType === 'auto' ? S.detected : p.picType;
+  if (S.kind === 'image' && (p.picType !== S.picType || methodFor(type, p.depthModel) !== S.method)) {
     S.picType = p.picType;
-    applyStyle(p.picType === 'auto' ? S.detected : p.picType);
+    applyStyle(type);
+    autoLabel(); // Auto's depth model follows the type
     showFor();
   }
   if (S.kind === 'stl') {
@@ -97,6 +123,19 @@ function settingChanged(id) {
     if (stlMethod(p) !== S.method) { S.method = stlMethod(p); showFor(); }
   }
   schedule();
+}
+
+// Every setting back to its default, remembered ones too: Auto for the picture type and depth model (so the detected
+// type's starting settings), Auto for an STL's side and cut. Painted outline edits stay.
+function resetAll() {
+  store.set('settings', {});
+  for (const d of PARAMS) if (d.id && (d.type === 'select' || d.type === 'orient')) setParam(d.id, d.val);
+  if (S.kind === 'image') { S.picType = 'auto'; applyStyle(S.detected); }
+  if (S.kind === 'stl') { S.splitKey = null; S.auto = null; }
+  for (const d of PARAMS) if (d.id && d.type !== 'select' && d.type !== 'orient') setParam(d.id, defaultOf(d));
+  autoLabel();
+  showFor();
+  settingChanged('reset');
 }
 
 // ---------------------------------------------------------------- loading files
@@ -115,7 +154,7 @@ function loadSource(kind, data, name) {
   }
   if (kind === 'image') {
     dropOrient(); // the Orientation view is for STLs only
-    S.detected = analyzeImage(data); S.picType = 'auto';
+    ({ type: S.detected, scene: S.scene, transparent: S.transparent, shading: S.shading } = analyzeImage(data)); S.picType = 'auto';
     applyStyle(S.detected);
     autoLabel();
   } else {
@@ -136,25 +175,46 @@ function loadSource(kind, data, name) {
   requestFit();
   schedule(0);
 }
+// Browsers don't decode SVG files straight into bitmaps: draw it as an <img>, 2048 px on its long side (it has no
+// resolution of its own, and a finer drawing gives a finer outline).
+async function svgBitmap(file) {
+  const url = URL.createObjectURL(file), img = new Image();
+  try {
+    img.src = url;
+    await img.decode();
+    const w0 = img.naturalWidth || 1024, h0 = img.naturalHeight || 1024, s = 2048 / Math.max(w0, h0);
+    const c = document.createElement('canvas');
+    c.width = Math.round(w0 * s); c.height = Math.round(h0 * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return await createImageBitmap(c);
+  } finally { URL.revokeObjectURL(url); }
+}
 async function loadFile(file) {
   if (!file) return;
+  const type = /\.3mf$/i.test(file.name) ? '3mf' : /\.stl$/i.test(file.name) ? 'stl' : 'image';
   try {
-    if (/\.(stl|3mf)$/i.test(file.name)) {
+    if (type !== 'image') {
       const data = await file.arrayBuffer();
-      const geom = /\.3mf$/i.test(file.name) ? parse3MF(data) : new STLLoader().parse(data);
+      const geom = type === '3mf' ? parse3MF(data) : new STLLoader().parse(data);
+      const pos = geom.attributes.position?.array;
+      if (!pos?.length || !pos.every(Number.isFinite)) throw new Error('No valid triangles');
       loadSource('stl', geom.index ? geom.toNonIndexed() : geom, file.name);
     } else {
-      const bmp = await createImageBitmap(file);
+      const bmp = /\.svg$/i.test(file.name) || file.type === 'image/svg+xml' ? await svgBitmap(file) : await createImageBitmap(file);
       loadSource('image', bmp, file.name);
     }
-  } catch (e) { status(t('readFailed') + e.message, true); }
+  } catch (e) {
+    // the reason in the person's language; the technical detail is for the console
+    console.error(e);
+    status(e.key ? t(e.key, e.params) : t({ '3mf': 'badThreeMF', stl: 'badSTL', image: 'badImage' }[type]), true);
+  }
 }
 
 // ---------------------------------------------------------------- building
 function status(msg, err = false) {
   const s = $('#status'); s.hidden = false; s.textContent = msg; s.classList.toggle('err', err);
 }
-let timer = null, gen = 0;
+let timer = null, gen = 0, workerRetried = false;
 function schedule(delay = 220) {
   clearTimeout(timer);
   const my = ++gen; // invalidate older results as soon as a committed setting changes
@@ -168,6 +228,22 @@ async function regen(my, p) {
   if (my !== gen || !S.kind) return;
   const kind = S.kind, source = sourceId;
   p.depthMode = S.method;
+  if (kind === 'image') {
+    const type = p.picType === 'auto' ? S.detected : p.picType, preset = S.auto || {};
+    // a setting hidden for this type or method has no say (settings.js hide)
+    for (const d of PARAMS) if (d.hide && d.hide.split(' ').some((h) => h === type || h === S.method)) p[d.id] = 0;
+    p.aiCutout = cutoutFor(type);
+    p.depthModel = modelFor(type, p.depthModel);
+    // settings without a control of their own: from the picture type's preset
+    p.lineDark = preset.lineDark ?? 0.38; // how dark a stroke must be to count as a line
+    p.reopen = preset.reopen ?? 0.5; // how readily enclosed background is opened up by depth
+    // Colour areas: fewer, merged areas to the left (higher colour tolerance, smoothing out texture first), more and
+    // smaller to the right
+    p.colorTol = 60 - 5.6 * p.areaDetail;
+    p.simplify = Math.max(0, Math.min(4, Math.round((8 - p.areaDetail) * 1.2)));
+    // shaded pictures: the rounded rim rises with Edge rounding, in the proportion the preset gives them
+    if (S.method !== 'cartoon') p.puff = (preset.puff ?? 0) * (preset.edgeSoft ? p.edgeSoft / preset.edgeSoft : 1);
+  }
   const split = kind === 'stl' && stlChoice(p).split;
   if (kind === 'stl') p.stlUp = stlChoice(p).up;
   if (split) { p.backT = 0; p.border = 0; }
@@ -193,7 +269,7 @@ async function regen(my, p) {
       positions: kind === 'stl' ? S.geom.attributes.position.array : null },
     (message) => { if (my === gen) status(message); });
     if (!result || my !== gen) return;
-    S.building = false;
+    S.building = false; workerRetried = false;
     if (result.splitAt !== null) {
       S.splitKey = splitKey; S.auto = { splitAt: result.splitAt };
       if (+$('#p-splitAt').value === p.splitAt) setParam('splitAt', result.splitAt);
@@ -201,11 +277,17 @@ async function regen(my, p) {
     if (result.outline) setEditorOutline(result.outline);
     const model = result.model;
     showModel(model, $('#paint').checked, model.notFlat && $('#flipObj').checked);
+    S.shownSource = source;
     setStep(step);
     status(result.warning || t('buildTime', { ms: result.elapsed }), !!result.warning);
   } catch (e) {
     if (my !== gen) return;
-    console.error(e); status(e.message, true); S.building = false;
+    console.error(e);
+    // the background worker failed: once, quietly start a fresh one and build again (from new snapshots)
+    if (e.worker && !workerRetried) { workerRetried = true; schedule(0); return; }
+    status(e.worker ? t('buildFailed') : e.message, true); S.building = false;
+    // a new file that failed: don't leave the previous file's model on show under its name
+    if (S.shownSource !== source) { clearModel(); setStep(step); }
     if (step === 0) drawEditor();
   } finally {
     // Transferred bitmaps are detached here; close any snapshots that never reached the worker.
@@ -248,12 +330,18 @@ $('#lang').onchange = (e) => {
 applyLang();
 for (const d of PARAMS) if (d.id) setParam(d.id, kept(d) ? savedValue(d, 'image') : d.val);
 showFor('image');
+// some settings only apply when AI runs on the graphics card (WebGPU)
+(async () => {
+  try { S.gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) { S.gpu = false; }
+  showFor();
+})();
 updateCaption();
 initEditor(() => schedule(0));
 
 const file = $('#file');
 $('#drop').onclick = (e) => { if (!e.target.closest('button')) file.click(); };
 $('#openBtn').onclick = () => file.click();
+$('#resetAll').onclick = resetAll;
 file.onchange = () => { loadFile(file.files[0]); file.value = ''; };
 {
   const el = $('main');

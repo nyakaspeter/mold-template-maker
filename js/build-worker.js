@@ -1,13 +1,45 @@
 // Geometry, rasterisation and AI inference run here so the page can keep handling input.
 import { BufferGeometry, BufferAttribute } from 'https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js';
 import { setLang, t } from './i18n.js';
-import { aiDepth } from './depth.js';
+import { aiDepth, aiMatte } from './depth.js';
+import { guidedMatte } from './matte.js';
 import { hfFromImage } from './relief.js';
 import { hfFromSTL, halvesFromSTL, bestCut, originalMesh } from './stl.js';
 import { buildModel, buildHalves } from './model.js';
 import { exactHalves } from './exact.js';
 
-let sourceId, geom, ai, aiModel, aiFailed = false;
+let sourceId, geom, ai, aiModel, aiFailed = false, matte, matteFailed = false;
+
+// the picture with the matte as its transparency, so the outline follows the cut-out subject. The model's matte is
+// coarse (320 px): it is refined on a copy of up to 1600 px, so its edges follow the picture's own (hair, fingers)
+const resample = (a, aw, ah, w, h) => {
+  const o = new Float32Array(w * h);
+  for (let j = 0; j < h; j++) {
+    const fy = Math.min(ah - 1.001, Math.max(0, (j + 0.5) * ah / h - 0.5)), y0 = fy | 0, ay = fy - y0;
+    for (let i = 0; i < w; i++) {
+      const fx = Math.min(aw - 1.001, Math.max(0, (i + 0.5) * aw / w - 0.5)), x0 = fx | 0, ax = fx - x0, q = y0 * aw + x0;
+      o[j * w + i] = (a[q] * (1 - ax) + a[q + 1] * ax) * (1 - ay) + (a[q + aw] * (1 - ax) + a[q + aw + 1] * ax) * ay;
+    }
+  }
+  return o;
+};
+let cutCache = null;
+function cutOut(img, m) {
+  if (cutCache?.m === m) return cutCache.c;
+  const s = Math.min(1, 1600 / Math.max(img.width, img.height)), gw = Math.round(img.width * s), gh = Math.round(img.height * s);
+  const g = new OffscreenCanvas(gw, gh), gctx = g.getContext('2d', { willReadFrequently: true });
+  gctx.drawImage(img, 0, 0, gw, gh);
+  const refined = guidedMatte(gctx.getImageData(0, 0, gw, gh).data, gw, gh, resample(m.data, m.width, m.height, gw, gh),
+    Math.max(2, Math.round(Math.max(gw, gh) / 150)), 1e-3);
+  const alpha = s < 1 ? resample(refined, gw, gh, img.width, img.height) : refined;
+  const c = new OffscreenCanvas(img.width, img.height), ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0);
+  const d = ctx.getImageData(0, 0, img.width, img.height), px = d.data;
+  for (let k = 0; k < alpha.length; k++) px[k * 4 + 3] *= alpha[k];
+  ctx.putImageData(d, 0, 0);
+  cutCache = { m, c };
+  return c;
+}
 self.onmessage = async ({ data: job }) => {
   const { id, source, kind, img, edit, p, split, notFlat, autoCut, lang } = job;
   setLang(lang);
@@ -16,7 +48,7 @@ self.onmessage = async ({ data: job }) => {
   try {
     if (source !== sourceId) {
       geom?.dispose(); geom = null;
-      ai = null; aiModel = null; aiFailed = false; sourceId = source;
+      ai = null; aiModel = null; aiFailed = false; matte = null; matteFailed = false; sourceId = source;
     }
     if (kind === 'stl' && !geom) {
       geom = new BufferGeometry();
@@ -28,8 +60,15 @@ self.onmessage = async ({ data: job }) => {
       try { ai = await aiDepth(img, status, p.depthModel); }
       catch (error) { aiFailed = true; console.error(error); }
     }
+    // the AI cut-out (when, see app.js: never for a picture with its own transparency)
+    const wantMatte = kind === 'image' && p.aiCutout;
+    if (wantMatte && !matte && !matteFailed) {
+      try { matte = await aiMatte(img, status); }
+      catch (error) { matteFailed = true; console.error(error); }
+    }
+    p.cutout = wantMatte && !!matte;
     if (autoCut) p.splitAt = bestCut(geom, p);
-    const hf = kind === 'image' ? hfFromImage(img, wantAI ? ai : null, p, edit)
+    const hf = kind === 'image' ? hfFromImage(wantMatte && matte ? cutOut(img, matte) : img, wantAI ? ai : null, p, edit)
       : split ? halvesFromSTL(geom, p) : hfFromSTL(geom, p);
     let model;
     if (split) {
