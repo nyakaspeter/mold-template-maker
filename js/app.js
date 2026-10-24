@@ -265,7 +265,7 @@ async function regen(my, p) {
       }
     }
     if (my !== gen) return;
-    const result = await buildInWorker({ source, kind, img, edit, p, split, notFlat, autoCut, lang: getLang(),
+    const result = await buildInWorker({ source, kind, img, edit, editVersion: S.editVersion, p, split, notFlat, autoCut, lang: getLang(),
       positions: kind === 'stl' ? S.geom.attributes.position.array : null },
     (message) => { if (my === gen) status(message); });
     if (!result || my !== gen) return;

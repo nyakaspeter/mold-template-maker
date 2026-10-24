@@ -6,7 +6,7 @@ export const S = {
   // AI, and whether the picture has its own transparent outline
   gpu: false, // AI runs on the graphics card (WebGPU)
   shading: 0, // share of soft gradients inside the picture's shape (see style.js)
-  edit: null, editUsed: false, editDirty: false, // painted outline edits
+  edit: null, editUsed: false, editDirty: false, editVersion: 0, // painted outline edits (the version counts changes)
   building: false, // a build is pending or running
   shownSource: null, // which loaded file the model on show was built from
 };

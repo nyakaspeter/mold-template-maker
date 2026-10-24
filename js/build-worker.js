@@ -8,7 +8,10 @@ import { hfFromSTL, halvesFromSTL, bestCut, originalMesh } from './stl.js';
 import { buildModel, buildHalves } from './model.js';
 import { exactHalves } from './exact.js';
 
-let sourceId, geom, ai, aiModel, aiFailed = false, matte, matteFailed = false;
+let sourceId, geom, ai, aiModel, aiFailed = false, matte, matteFailed = false, hfCache = null;
+// settings only the meshes use (model.js): changing them reuses the last height map. Roundness is one too, except in
+// the cartoon method, where it shapes each colour area.
+const MESH_ONLY = ['backT', 'border', 'gap', 'over', 'wallT', 'baseT', 'maskSmooth', 'reliefSmooth', 'edgeSoft', 'lineDepth'];
 
 // the picture with the matte as its transparency, so the outline follows the cut-out subject. The model's matte is
 // coarse (320 px): it is refined on a copy of up to 1600 px, so its edges follow the picture's own (hair, fingers)
@@ -41,14 +44,14 @@ function cutOut(img, m) {
   return c;
 }
 self.onmessage = async ({ data: job }) => {
-  const { id, source, kind, img, edit, p, split, notFlat, autoCut, lang } = job;
+  const { id, source, kind, img, edit, editVersion, p, split, notFlat, autoCut, lang } = job;
   setLang(lang);
   const status = (message) => self.postMessage({ id, status: message });
   const start = performance.now();
   try {
     if (source !== sourceId) {
       geom?.dispose(); geom = null;
-      ai = null; aiModel = null; aiFailed = false; matte = null; matteFailed = false; sourceId = source;
+      ai = null; aiModel = null; aiFailed = false; matte = null; matteFailed = false; hfCache = null; sourceId = source;
     }
     if (kind === 'stl' && !geom) {
       geom = new BufferGeometry();
@@ -81,8 +84,16 @@ self.onmessage = async ({ data: job }) => {
       }
     }
     if (autoCut) p.splitAt = bestCut(geom, p);
-    const hf = kind === 'image' ? hfFromImage(picture, wantAI ? ai : null, p, edit)
-      : split ? halvesFromSTL(geom, p) : hfFromSTL(geom, p);
+    let hf;
+    if (kind === 'image') {
+      const key = { ...p, editVersion };
+      for (const k of MESH_ONLY) delete key[k];
+      if (p.depthMode !== 'cartoon') delete key.puff;
+      const keyText = JSON.stringify(key), depth = wantAI ? ai : null;
+      // (the picture itself is a new snapshot each time; for one source it only differs by the cut-out)
+      if (hfCache?.key === keyText && hfCache.depth === depth && hfCache.matte === matte) hf = hfCache.hf;
+      else { hf = hfFromImage(picture, depth, p, edit); hfCache = { key: keyText, depth, matte, hf }; }
+    } else hf = split ? halvesFromSTL(geom, p) : hfFromSTL(geom, p);
     let model;
     if (split) {
       const halves = hf.map((h) => buildModel(h, p));
@@ -91,7 +102,8 @@ self.onmessage = async ({ data: job }) => {
     } else model = buildModel(hf, p);
     model.notFlat = notFlat;
     if (notFlat && !split) model.geo.object = originalMesh(geom, p);
-    const result = { id, model, outline: kind === 'image' ? { W: hf.W, H: hf.H, mask: hf.mask, rect: hf.rect } : null,
+    // (a copy of the mask: the result's buffers are handed over to the page, and the height map stays cached here)
+    const result = { id, model, outline: kind === 'image' ? { W: hf.W, H: hf.H, mask: hf.mask.slice(), rect: hf.rect } : null,
       splitAt: autoCut ? p.splitAt : null, elapsed: Math.round(performance.now() - start),
       warning: wantAI && aiFailed ? t('depthFailed') : null };
     // Transfer mesh buffers rather than copying large generated models back to the page.

@@ -70,6 +70,10 @@ function geometryModel(key, gpu, onStatus) {
 // copy of the picture with fewer tokens (coarser, but in reasonable time).
 const TILES = 2, OVERLAP = 0.25;
 async function aiGeometry(img, onStatus, model) {
+  // on the graphics card Depth Anything adds the finest detail: it loads alongside MoGe, and both count as one
+  // "Loading depth model" and one "Estimating depth" step
+  const quiet = () => {};
+  if (await useGPU(model)) estimator('1', await useGPU('1'), quiet).catch(() => { /* fine detail is skipped */ });
   const { gpu, ort, session } = await geometryModel(model, await useGPU(model), onStatus);
   onStatus(t('estimatingDepth'));
   const run = async (x, y, cw, ch, long, tokens) => {
@@ -101,7 +105,7 @@ async function aiGeometry(img, onStatus, model) {
     }
   }
   result = fuseTiles(result, tiles, 1.6, img.width, img.height);
-  try { fuseDepthDetail(result, await aiDepth(img, onStatus, '1'), TILES * 60); }
+  try { fuseDepthDetail(result, await aiDepth(img, quiet, '1'), TILES * 60); }
   catch (e) { console.warn('Depth Anything detail failed, continuing without it', e); }
   return result;
 }
