@@ -76,8 +76,9 @@ function raster(geom, p) {
 // (the one-piece mold would hold hardly more than the model itself); facing up from one, the model is made as it is.
 // "Orientation: Auto" puts the best flat back down; with none, the model lies so the outline seen from above
 // is largest (a figure with its arms out is cut into front and back), with the more detailed side up: a face rather
-// than a back. flats: every up direction with a flat back below it, so "Cut into two halves: Auto" can follow a
-// side picked by hand.
+// than a back. About even (a knitted back is as detailed as a face), a figure lying on its front or back shows -Y:
+// models are usually made facing -Y (the front view in Blender and most CAD). flats: every up direction with a flat
+// back below it, so "Cut into two halves: Auto" can follow a side picked by hand.
 export function detectSTL(geom, p) {
   geom.computeBoundingBox();
   const bb = geom.boundingBox, s = p.scale / 100;
@@ -111,7 +112,7 @@ export function detectSTL(geom, p) {
     }
     if (!widest || cells * a > widest.area) widest = { up: axis, area: cells * a, top, bot, W, H, res };
   }
-  if (!flatBack) { // the side with more surface detail faces up; about even (a symmetric model): keep +
+  if (!flatBack) { // the side with more surface detail faces up; about even: -Y, or + for the other axes
     const { W, H, res, top, bot } = widest;
     const detail = (h) => {
       let sum = 0;
@@ -124,7 +125,8 @@ export function detectSTL(geom, p) {
       }
       return sum;
     };
-    if (detail(bot) > 1.15 * detail(top)) widest.up = '-' + widest.up;
+    const plus = detail(top), minus = detail(bot);
+    if (widest.up === 'y' ? plus <= 1.15 * minus : minus > 1.15 * plus) widest.up = '-' + widest.up;
   }
   last = null; // these were coarse; the real build reads it again at full detail
   return { up: flatBack ? flatBack.up : widest.up, flats };
