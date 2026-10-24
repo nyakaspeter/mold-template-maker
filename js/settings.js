@@ -14,7 +14,7 @@ export const PARAMS = [
       ['lineart', 'lineArt'], ['heightmap', 'heightMap']],
     hint: 'pictureTypeHelp' },
   // 4 also estimates the surface: pictures are then sculpted ('sculpt' instead of 'ai' or 'cartoon', see app.js)
-  { id: 'depthModel', label: 'depthModel', type: 'select', val: 'auto', only: 'image', modes: 'ai cartoon sculpt',
+  { id: 'depthModel', label: 'depthModel', type: 'select', val: 'auto', only: 'image', modes: 'ai cartoon sculpt', fresh: true,
     options: [['auto', 'auto'], ['1', 'depthSmall'], ['4', 'mogeSmall']],
     hint: 'depthModelHelp' },
 
@@ -93,9 +93,8 @@ export const DEFAULTS = {
   stl: { backT: 0, border: 0, reliefSmooth: 0, maskSmooth: 0.4 },
 };
 
-// Remembered in this browser: settings that don't start fresh with each file (sizes, the mold template, the pins,
-// the depth model) and which sections are open. Settings whose default differs between images and STLs are kept per
-// file type.
+// Remembered in this browser: settings that don't start fresh with each file (sizes, the mold template, the pins)
+// and which sections are open. Settings whose default differs between images and STLs are kept per file type.
 export const store = {
   get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage blocked: not remembered */ } },
