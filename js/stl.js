@@ -156,7 +156,8 @@ export function hfFromSTL(geom, p) {
 // Where to cut by default, in % of the height from the bottom. First, each half should stay in as few pieces as
 // possible (one each): a cut just above a toe leaves the toe as a loose crumb. Among those heights, the one where
 // the cut face is largest, so each half has as few overhangs as possible; among nearly equal ones, the one nearest
-// the middle. Pieces are counted on the outline seen from above (a quick check; tiny bits under 1 mm² don't count).
+// the middle. Pieces are counted on the outline seen from above (a quick check; tiny bits under 1 mm² don't count,
+// and a half that is only such bits, a nose's tip, is no half: that height isn't a choice).
 export function bestCut(geom, p) {
   const { W, H, res, top, bot, minz, maxz } = raster(geom, p), N = W * H, span = Math.max(1e-6, maxz - minz);
   const minCells = Math.max(4, 1 / (res * res)), seen = new Int32Array(N), stack = new Int32Array(N);
@@ -184,8 +185,10 @@ export function bestCut(geom, p) {
     const z = minz + span * pct / 100;
     let area = 0;
     for (let k = 0; k < N; k++) if (bot[k] < z && top[k] > z) area++;
-    tries.push({ pct, area, n: pieces((k) => top[k] > z) + pieces((k) => bot[k] < z) });
+    const above = pieces((k) => top[k] > z), below = pieces((k) => bot[k] < z);
+    if (above && below) tries.push({ pct, area, n: above + below });
   }
+  if (!tries.length) return 50; // no height leaves a real piece on both sides
   const fewest = Math.min(...tries.map((c) => c.n)), ok = tries.filter((c) => c.n === fewest);
   const widest = Math.max(...ok.map((c) => c.area));
   return ok.filter((c) => c.area >= widest * 0.97).reduce((a, c) => (Math.abs(c.pct - 50) < Math.abs(a.pct - 50) ? c : a)).pct;
