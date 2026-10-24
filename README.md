@@ -14,6 +14,11 @@ Photos, and pictures without a plain backdrop, are cut out of their background w
 ([U²-Net](https://huggingface.co/BritishWerewolf/U-2-Net), edges refined with a guided filter); other pictures use the
 plain background colour.
 
+A flat-back object (a picture, or an STL that isn't cut) can get a hanger loop: a ring on a short stem from the top of
+the outline, above the object's balance point so the cast hangs straight, as thick as the back plate (at least 2 mm).
+Its size is the hole's diameter; the silicone fills the hole, which keeps it open in the cast. Hanger thickness sets how
+wide the ring is around the hole (2.5 mm by default), and Balance offset moves it sideways, in % of the object's width.
+
 For an STL or 3MF, the app finds a flat back and puts it down. One without a flat back is cut into two halves (front and
 back, where the object is widest): each gets its own mold, and the cast halves are glued together. The halves are cut
 from the model itself with [manifold-3d](https://github.com/elalish/manifold), so the model must be watertight.

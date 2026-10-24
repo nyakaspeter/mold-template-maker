@@ -7,6 +7,7 @@ import { t } from './i18n.js';
 // sliders are under Fine-tuning. fresh: starts from its default with every new file (the rest is remembered).
 // hide: picture types or methods it means nothing for (its preset value there is 0).
 // only: 'file' = once any file is loaded; before that only what applies to every file and is kept shows.
+// when: shows only while that setting is on (not 0).
 export const PARAMS = [
   { g: 'picture', storageKey: 'Picture', only: 'image' },
   { id: 'picType', label: 'pictureType', type: 'select', val: 'auto', only: 'image', fresh: true,
@@ -54,6 +55,13 @@ export const PARAMS = [
     hint: 'backThicknessHelp' },
   { id: 'border', label: 'flatBorder', unit: 'mm', min: 0, max: 20, step: 0.5, val: 0, only: 'file', modes: 'ai sculpt cartoon bright whole',
     hint: 'flatBorderHelp' },
+  // the leftmost position is no loop (0), the next 1 mm
+  { id: 'hanger', label: 'hanger', unit: 'mm', min: 0.5, max: 8, step: 0.5, val: 0, zero: 'none', only: 'file', modes: 'ai sculpt cartoon bright whole', fresh: true,
+    hint: 'hangerHelp' },
+  { id: 'hangerT', label: 'hangerThickness', unit: 'mm', min: 1, max: 6, step: 0.5, val: 2.5, only: 'file', modes: 'ai sculpt cartoon bright whole', when: 'hanger',
+    hint: 'hangerThicknessHelp' },
+  { id: 'hangerShift', label: 'balanceOffset', unit: '%', min: -20, max: 20, step: 1, val: 0, only: 'file', modes: 'ai sculpt cartoon bright whole', when: 'hanger', fresh: true,
+    hint: 'balanceOffsetHelp' },
 
   { g: 'moldTemplate', storageKey: 'Mold template' },
   { id: 'gap', label: 'siliconeRim', unit: 'mm', min: 1, max: 25, step: 0.5, val: 3, hint: 'siliconeRimHelp' },
@@ -141,6 +149,7 @@ export function buildControls(onChange) {
     if (d.modes) el.dataset.modes = d.modes;
     if (d.colour) el.dataset.colour = '';
     if (d.hide) el.dataset.hide = d.hide;
+    if (d.when) el.dataset.when = d.when;
     // the description sits behind an ⓘ after the name and shows as a tooltip
     const info = d.hint ? `<span class="info" tabindex="0" aria-label="${t(d.hint).replace(/"/g, '&quot;')}">i</span>` : '';
     if (d.type === 'check') {
@@ -156,7 +165,7 @@ export function buildControls(onChange) {
     } else {
       el.innerHTML = `<div class="lab"><span>${t(d.label)}${info}</span><span class="val">
         <button class="reset" title="${t('resetDefault')}" aria-label="${t('resetSetting', { label: t(d.label) })}">↺</button><output id="o-${d.id}"></output></span></div>
-        <input type="range" id="p-${d.id}" min="${d.min}" max="${d.max}" step="${d.step}" value="${slider(d, d.val)}" autocomplete="off">`;
+        <input type="range" id="p-${d.id}" min="${d.min}" max="${d.max}" step="${d.step}" value="${toPos(d, d.val)}" autocomplete="off">`;
       el.querySelector('.reset').onclick = () => { setParam(d.id, defaultOf(d)); saveSetting(d); onChange(d.id); };
     }
     if (d.hint) {
@@ -184,7 +193,10 @@ export function buildControls(onChange) {
   }
 }
 // a reversed slider's position for a value, and its value for a position (the same mirror both ways)
-const slider = (d, v) => (d.reverse ? Math.round((d.min + d.max - v) * 1e6) / 1e6 : v);
+const mirror = (d, v) => (d.reverse ? Math.round((d.min + d.max - v) * 1e6) / 1e6 : v);
+// a slider with a name for 0 (zero) whose minimum is above 0: its leftmost position is 0
+const fromPos = (d, pos) => (d.zero && d.min > 0 && pos <= d.min ? 0 : mirror(d, pos));
+const toPos = (d, v) => (d.zero && v < d.min ? d.min : mirror(d, v));
 export const defaultOf = (d) => (S.auto && d.id in S.auto ? S.auto[d.id] : DEFAULTS[shownKind]?.[d.id] ?? d.val);
 // the Reset all button shows while any setting is away from its default
 function showResetAll() {
@@ -201,13 +213,13 @@ export function showValue(d) {
   }
   const o = $('#o-' + d.id);
   if (!o) return;
-  const v = slider(d, parseFloat($('#p-' + d.id).value));
+  const v = fromPos(d, parseFloat($('#p-' + d.id).value));
   o.textContent = v === 0 && d.zero ? t(d.zero) : `${v}${d.unit ? ' ' + d.unit : ''}`; // zero: what 0 is called
   o.closest('.ctl').classList.toggle('changed', Math.abs(v - defaultOf(d)) > 1e-9);
 }
 export function setParam(id, v) {
   const el = $('#p-' + id), d = PARAMS.find((x) => x.id === id);
-  if (el.type === 'checkbox') el.checked = v; else el.value = el.type === 'range' ? slider(d, v) : v;
+  if (el.type === 'checkbox') el.checked = v; else el.value = el.type === 'range' ? toPos(d, v) : v;
   showValue(d);
 }
 export function readParams() {
@@ -215,7 +227,7 @@ export function readParams() {
   for (const d of PARAMS) {
     if (!d.id) continue;
     const el = $('#p-' + d.id);
-    p[d.id] = d.type === 'check' ? el.checked : d.type === 'select' || d.type === 'orient' ? el.value : slider(d, parseFloat(el.value));
+    p[d.id] = d.type === 'check' ? el.checked : d.type === 'select' || d.type === 'orient' ? el.value : fromPos(d, parseFloat(el.value));
   }
   return p;
 }
@@ -226,12 +238,13 @@ export function showFor(kind = shownKind) {
   // until a file is loaded, only settings that apply to every file show (only: 'file' = any loaded file)
   // a mode can also be named with the processor it runs on, e.g. 'sculpt-gpu'
   const modes = [S.method, `${S.method}-${S.gpu ? 'gpu' : 'cpu'}`], loaded = S.kind ? kind : null;
-  const hidden = [S.method, S.kind === 'image' ? S.type : null];
+  const hidden = [S.method, S.kind === 'image' ? S.type : null], p = readParams();
   document.querySelectorAll('[data-only], [data-modes]').forEach((el) => {
     const only = el.dataset.only;
     const ok = (!only || only === loaded || (only === 'file' && loaded)) && (!el.dataset.modes || el.dataset.modes.split(' ').some((m) => modes.includes(m))) &&
       !(el.dataset.colour !== undefined && (S.aiCutout || S.transparent)) &&
-      !(el.dataset.hide && el.dataset.hide.split(' ').some((h) => hidden.includes(h)));
+      !(el.dataset.hide && el.dataset.hide.split(' ').some((h) => hidden.includes(h))) &&
+      !(el.dataset.when && !p[el.dataset.when]);
     el.style.display = ok ? '' : 'none';
   });
   // a section whose settings are all hidden is hidden too

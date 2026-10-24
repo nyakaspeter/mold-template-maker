@@ -7,11 +7,12 @@ import { hfFromImage, subjectBox } from './relief.js';
 import { hfFromSTL, halvesFromSTL, bestCut, originalMesh } from './stl.js';
 import { buildModel, buildHalves } from './model.js';
 import { exactHalves } from './exact.js';
+import { joinMeshes } from './mesh.js';
 
 let sourceId, geom, ai, aiModel, aiFailed = false, matte, matteFailed = false, hfCache = null;
 // settings only the meshes use (model.js): changing them reuses the last height map. Roundness is one too, except in
 // the cartoon method, where it shapes each colour area.
-const MESH_ONLY = ['backT', 'border', 'gap', 'over', 'wallT', 'baseT', 'maskSmooth', 'reliefSmooth', 'edgeSoft', 'lineDepth'];
+const MESH_ONLY = ['backT', 'border', 'gap', 'over', 'wallT', 'baseT', 'maskSmooth', 'reliefSmooth', 'edgeSoft', 'lineDepth', 'hanger', 'hangerT', 'hangerShift'];
 
 // the picture with the matte as its transparency, so the outline follows the cut-out subject. The model's matte is
 // coarse (320 px): it is refined on a copy of up to 1600 px, so its edges follow the picture's own (hair, fingers)
@@ -101,7 +102,8 @@ self.onmessage = async ({ data: job }) => {
       model = buildHalves(halves, p);
     } else model = buildModel(hf, p);
     model.notFlat = notFlat;
-    if (notFlat && !split) model.geo.object = originalMesh(geom, p);
+    if (notFlat && !split) model.geo.object = model.hanger ? joinMeshes([[originalMesh(geom, p)], [model.hanger]]) : originalMesh(geom, p);
+    delete model.hanger;
     // (a copy of the mask: the result's buffers are handed over to the page, and the height map stays cached here)
     const result = { id, model, outline: kind === 'image' ? { W: hf.W, H: hf.H, mask: hf.mask.slice(), rect: hf.rect } : null,
       splitAt: autoCut ? p.splitAt : null, elapsed: Math.round(performance.now() - start),

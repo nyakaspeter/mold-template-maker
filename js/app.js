@@ -122,6 +122,7 @@ function settingChanged(id) {
     showOrient(stlChoice(p).up); // e.g. back to Auto's side after the reset
     if (stlMethod(p) !== S.method) { S.method = stlMethod(p); showFor(); }
   }
+  if (PARAMS.some((d) => d.when === id)) showFor(); // settings shown only while this one is on
   schedule();
 }
 
@@ -246,7 +247,7 @@ async function regen(my, p) {
   }
   const split = kind === 'stl' && stlChoice(p).split;
   if (kind === 'stl') p.stlUp = stlChoice(p).up;
-  if (split) { p.backT = 0; p.border = 0; }
+  if (split) { p.backT = 0; p.border = 0; p.hanger = 0; }
   const splitKey = `${p.scale}|${p.stlUp}`;
   const autoCut = split && S.splitKey !== splitKey;
   const notFlat = kind === 'stl' && (split || !S.stlAuto.flats.includes(p.stlUp.split(':')[0]));

@@ -19,7 +19,8 @@ export function spreadColours(colors, mask, W, H) {
 export function buildModel(hf, p) {
   const res = hf.res, B = p.baseT, T = p.backT;
   const border = p.border, gap = p.gap, wallT = p.wallT, over = p.over;
-  const pad = Math.ceil((border + gap + wallT + 1.5) / res) + 3;
+  // (with a hanger loop, room for it above the object)
+  const pad = Math.ceil((border + gap + wallT + 1.5 + (p.hanger ? p.hanger + 2 * p.hangerT + 1 : 0)) / res) + 3;
   const W = hf.W + 2 * pad, H = hf.H + 2 * pad, N = W * H;
   const mask = new Uint8Array(N);
   let relief = new Float32Array(N), lines = new Float32Array(N);
@@ -81,10 +82,10 @@ export function buildModel(hf, p) {
   const ring = new Float32Array(N), gapRing = new Float32Array(N);
   const objTop = new Float32Array(N), posTop = new Float32Array(N);
   let maxTop = 0;
-  for (let k = 0; k < N; k++) {
-    sdfPlaque[k] = sdf[k] + border + 1e-4;
-    sdfCav[k] = sdfPlaque[k] + gap;
-  }
+  for (let k = 0; k < N; k++) sdfPlaque[k] = sdf[k] + border + 1e-4;
+  const G = { W, H, res, ox: -(W - 1) * res / 2, oy: (H - 1) * res / 2 };
+  const hanger = p.hanger > 0 ? hangerLoop(G, sdfPlaque, relief, T, p.hanger / 2, p.hangerT, p.hangerShift) : null;
+  for (let k = 0; k < N; k++) sdfCav[k] = sdfPlaque[k] + gap;
   // Openings in the object wider than the gap (between legs, beside a face) would otherwise get walls of their
   // own. The wall only follows the outside; enclosed openings are filled with silicone, which keeps them open in the cast.
   const cav = new Uint8Array(N);
@@ -101,7 +102,6 @@ export function buildModel(hf, p) {
     if (sdfPlaque[k] > 0 && objTop[k] > maxTop) maxTop = objTop[k];
   }
   const Ztop = B + maxTop + over;
-  const G = { W, H, res, ox: -(W - 1) * res / 2, oy: (H - 1) * res / 2 };
 
   // Alignment pins (halves only): a hole in the back of the cast for each (cut by exact.js), formed by a peg on a
   // printed lid that is laid on the filled mold. The lid also has two small holes for excess resin to escape.
@@ -180,11 +180,57 @@ export function buildModel(hf, p) {
   }
   const a = res * res / 1000;
   const dims = (b) => [(b.x1 - b.x0 + 1) * res, (b.y1 - b.y0 + 1) * res];
+  // the loop takes the colour of the top of the object it hangs from
+  const painted = colors && spreadColours(colors, mask, W, H);
+  if (painted && hanger) for (const k of hanger.cells) painted.copyWithin(k * 3, hanger.from * 3, hanger.from * 3 + 3);
   return {
-    G, geo, lid, pins, B, Ztop, maxTop, res, p, colors: colors && spreadColours(colors, mask, W, H),
+    G, geo, lid, pins, B, Ztop, maxTop, res, p, colors: painted, hanger: hanger?.mesh,
     sdfCav, // the template's inside outline, for exact STL halves
     stats: { castMl: cast * a, silMl: sil * a, obj: dims(bo), tpl: dims(bt), sil: dims(bc), objH: maxTop, tplH: Ztop },
   };
+}
+
+// A hanger loop (flat-back objects): a ring with a hole of radius r for a string, wall mm wide, on a short stem from the
+// top of the outline, above the object's balance point so the cast hangs straight. It is added to the outline (sdf, in
+// mm) and is as thick as the back plate T, so it sits flush with it, but at least HANGER_MIN (relief). shift moves it
+// sideways from the balance point, in % of the outline's width (to the right). The silicone fills its hole, which keeps
+// it open in the cast.
+const HANGER_MIN = 2;
+function hangerLoop(G, sdf, relief, T, r, wall, shift) {
+  const { W, H, res, ox, oy } = G, N = W * H, R = r + wall, stem = 0.6 * R;
+  const x = (k) => ox + (k % W) * res, y = (k) => oy - ((k / W) | 0) * res;
+  let m = 0, mx = 0, x0 = Infinity, x1 = -Infinity;
+  for (let k = 0; k < N; k++) {
+    if (sdf[k] <= 0) continue;
+    const w = Math.max(T + relief[k], 0.3);
+    m += w; mx += w * x(k); x0 = Math.min(x0, x(k)); x1 = Math.max(x1, x(k));
+  }
+  const cx = Math.min(x1, Math.max(x0, mx / m + shift / 100 * (x1 - x0)));
+  let from = -1; // the top of the outline over the stem
+  for (let k = 0; k < N && from < 0; k++) if (sdf[k] > 0 && Math.abs(x(k) - cx) <= stem) from = k;
+  const top = y(from), cy = top + r + 0.8;
+  // the ring, and the stem from just inside the outline up to the ring's middle; then the hole
+  const loop = new Float32Array(N), hole = new Float32Array(N);
+  for (let k = 0; k < N; k++) {
+    const dx = x(k) - cx, d = Math.hypot(dx, y(k) - cy);
+    loop[k] = Math.max(Math.min(R - d, d - r), Math.min(stem - Math.abs(dx), cy - y(k), y(k) - top + 1.5));
+    hole[k] = d - r;
+  }
+  // Its height also goes to the cells just outside it (nearer the loop than the object), so its edge is a wall, not a
+  // slope down to the floor that zigzags between cells (as an STL's edge, above)
+  const cells = [], thick = Math.max(T, HANGER_MIN);
+  for (let k = 0; k < N; k++) {
+    const own = Math.min(loop[k], hole[k]);
+    if (sdf[k] <= 0 && own > sdf[k] && own > -3 * res) relief[k] = thick - T;
+    if (sdf[k] <= 0 && own > 0) cells.push(k);
+    sdf[k] = Math.min(Math.max(sdf[k], loop[k]), hole[k]);
+    loop[k] = own;
+  }
+  // the loop alone, for showing with an STL shown as it is (build-worker.js); its colour is taken from 3 mm inside the
+  // top of the outline, past an outline's ink and soft edge
+  let inside = from;
+  for (let n = 0; n < 3 / res && inside + W < N && sdf[inside + W] > 0; n++) inside += W;
+  return { cells, from: inside, mesh: meshSolid(G, loop, 0, thick) };
 }
 
 // Two halves of an STL (a model for each) laid out side by side, so each stage downloads as one file.
