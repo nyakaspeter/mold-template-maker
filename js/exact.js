@@ -66,6 +66,10 @@ export async function exactHalves(geom, p, models) {
     models.forEach((M, i) => {
       const { G, B, Ztop } = M, body = halves[i]; // no back plate or border: they would end up in the glued seam
       let object = body;
+      // the lid's core is printed on its face (z = B); on the mold, that face lies on the cut. It is made on the grid,
+      // a few triangles per cell: simplified (within 0.02 mm), it is a fraction of the size
+      const core = M.lid?.core ? k(k(solid(w, M.lid.core)).simplify(0.02)) : null;
+      if (core) object = k(object.subtract(k(core.translate([0, 0, -B]))));
       for (const q of M.pins) object = k(object.subtract(k(k(w.Manifold.cylinder(q.d + 0.01, q.r, q.r, 48)).translate([q.x, q.y, -0.01]))));
       const positive = k(body.translate([0, 0, B - 0.05]));
       const silicone = k(k(prism(w, G, M.sdfCav, B, Ztop)).subtract(positive));
@@ -77,9 +81,10 @@ export async function exactHalves(geom, p, models) {
       M.geo.wall = { P: new Float32Array(0), N: new Float32Array(0) };
       M.geo.positive = { P: new Float32Array(0), N: new Float32Array(0) };
       if (M.lid) {
-        const lid = k(w.Manifold.union([k(solid(w, M.lid.plate)), k(solid(w, M.lid.pegs))]));
-        M.lid.plate = triangles(lid);
+        const parts = [M.lid.plate, M.lid.pegs].filter((m) => m.P.length).map((m) => k(solid(w, m)));
+        M.lid.plate = triangles(k(k(w.Manifold.union(core ? [...parts, core] : parts)).simplify(0.02)));
         M.lid.pegs = { P: new Float32Array(0), N: new Float32Array(0) };
+        M.lid.core = null;
       }
       M.geo.silOver = triangles(silicone);
       M.geo.silGap = { P: new Float32Array(0), N: new Float32Array(0) };

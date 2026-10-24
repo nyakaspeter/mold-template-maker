@@ -1,5 +1,5 @@
 // Reading an STL as a height map seen from above, or cut into two halves that each get a flat back.
-import { fitGrid, distTo } from './grid.js';
+import { fitGrid, distTo, neighbours } from './grid.js';
 
 // The model's points, scaled and turned so the chosen side faces up (only turned, never mirrored)
 function orient(geom, p) {
@@ -31,7 +31,8 @@ function orient(geom, p) {
 
 // The model's top and bottom surface on a grid (seen from above), turned so the chosen side faces up.
 // Kept for the last file and orientation, since moving the cut or changing the mold doesn't change it.
-// Every point where the model's surface crosses a grid cell's vertical line: visit(cell, height)
+// Every point where the model's surface crosses a grid cell's vertical line: visit(cell, height, side), side being
+// +1 or -1 by which way the triangle faces (up or down; which is which depends on the mesh's winding)
 function sample(pts, n, W, H, res, minx, maxy, visit) {
   for (let t = 0; t < n; t += 3) {
     const u0 = (pts[t * 3] - minx) / res, v0 = (maxy - pts[t * 3 + 1]) / res, z0 = pts[t * 3 + 2];
@@ -47,7 +48,7 @@ function sample(pts, n, W, H, res, minx, maxy, visit) {
         const w1 = ((u2 - i) * (v0 - j) - (u0 - i) * (v2 - j)) / area;
         const w2 = 1 - w0 - w1;
         if (w0 < -1e-6 || w1 < -1e-6 || w2 < -1e-6) continue;
-        visit(j * W + i, w0 * z0 + w1 * z1 + w2 * z2);
+        visit(j * W + i, w0 * z0 + w1 * z1 + w2 * z2, area > 0 ? 1 : -1);
       }
     }
   }
@@ -192,7 +193,8 @@ export function bestCut(geom, p) {
 
 // The two halves above and below the cut, each as a height map standing on its cut face. The lower half is
 // turned over (mirrored left to right), so both are seen from outside. Their outlines shape the templates and lids
-// (the halves themselves are cut exactly in exact.js). Pins: where the alignment holes go.
+// (the halves themselves are cut exactly in exact.js). Pins: where the alignment holes go. core (hollow casts): the
+// lid's core over the cut face (hollowCore).
 export function halvesFromSTL(geom, p) {
   const { W, H, res, top, bot, minz, maxz, minx, maxy, pts, n } = raster(geom, p);
   const z0 = minz + (maxz - minz) * p.splitAt / 100, N = W * H;
@@ -209,17 +211,26 @@ export function halvesFromSTL(geom, p) {
     }
   }
   upper.pins = []; lower.pins = [];
-  if (p.pins) {
-    // how much material there is straight above and below the cut: up to the first surface, not the outermost one,
-    // so a half that curves back in or is hollow isn't drilled through
-    const above = new Float32Array(N).fill(Infinity), below = new Float32Array(N).fill(-Infinity);
-    sample(pts, n, W, H, res, minx, maxy, (k, z) => {
-      if (z > z0 && z < above[k]) above[k] = z;
-      if (z < z0 && z > below[k]) below[k] = z;
-    });
+  if (p.pins || p.hollow) {
+    const { above, below } = solidAround(pts, n, W, H, res, minx, maxy, z0);
     const thick = new Float32Array(N);
     for (let k = 0; k < N; k++) if (cut[k]) thick[k] = Math.min(above[k] - z0, z0 - below[k]);
-    for (const pin of placePins(cut, thick, W, H, res, p)) {
+    // where the pins can't go in a hollow cast: the core of either half (the lower one is mirrored)
+    let cores = null;
+    if (p.hollow) {
+      const first = [new Float32Array(N), new Float32Array(N)];
+      for (let j = 0; j < H; j++) {
+        for (let i = 0; i < W; i++) {
+          const k = j * W + i;
+          first[0][k] = above[k] - z0; first[1][j * W + (W - 1 - i)] = z0 - below[k]; // (0 where the cut isn't)
+        }
+      }
+      upper.core = hollowCore(first[0], W, H, res, p.hollow);
+      lower.core = hollowCore(first[1], W, H, res, p.hollow);
+      cores = new Uint8Array(N);
+      for (let k = 0; k < N; k++) cores[k] = upper.core[k] > CORE_MIN || lower.core[k - k % W + W - 1 - k % W] > CORE_MIN ? 1 : 0;
+    }
+    if (p.pins) for (const pin of placePins(cut, thick, cores, W, H, res, p)) {
       upper.pins.push(pin);
       lower.pins.push({ ...pin, i: W - 1 - pin.i });
     }
@@ -227,14 +238,122 @@ export function halvesFromSTL(geom, p) {
   return [upper, lower];
 }
 
+// How far a hollow cast's core reaches into the half above each cell of the cut face (mm, below 0 where there is
+// none). The core keeps the shell thickness away from the half's surface everywhere: the space straight in from the
+// cut face, up to the first surface (f), shrunk by a ball of that radius. Built straight up from the cut face,
+// it pulls out of the set cast even where the half curves back in (there the shell is thicker).
+function hollowCore(f, W, H, res, w) {
+  const N = W * H;
+  // the ball is sampled cell by cell up to 24 cells across its radius, beyond that every s cells (f's lowest point
+  // within reach of a sample is taken first, so nothing is missed)
+  const R = w / res, s = Math.max(1, Math.round(R / 24)), h = s >> 1;
+  let low = f;
+  if (s > 1) {
+    for (const step of [1, W]) {
+      const out = new Float32Array(N);
+      for (let k = 0; k < N; k++) {
+        const i = k % W, j = (k / W) | 0;
+        let m = low[k];
+        for (let o = -h; o <= h; o++) {
+          if (step === 1 ? i + o < 0 || i + o >= W : j + o < 0 || j + o >= H) { m = 0; continue; }
+          m = Math.min(m, low[k + o * step]);
+        }
+        out[k] = m;
+      }
+      low = out;
+    }
+  }
+  const offs = [], n = Math.ceil(R / s) * s;
+  for (let dj = -n; dj <= n; dj += s) {
+    for (let di = -n; di <= n; di += s) {
+      const d = Math.max(0, Math.hypot(di, dj) - h * Math.SQRT2) * res; // the nearest point of each sample's square
+      if (d <= w) offs.push([di, dj, Math.sqrt(w * w - d * d)]);
+    }
+  }
+  // worked out below 0 too, wherever the cut face is, so the core's outline runs smoothly between cells
+  const c = new Float32Array(N).fill(-w);
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const k = j * W + i;
+      if (f[k] <= 0) continue;
+      let m = Infinity;
+      for (const [di, dj, z] of offs) {
+        const x = i + di, y = j + dj;
+        const v = (x < 0 || y < 0 || x >= W || y >= H ? 0 : low[y * W + x]) - z;
+        if (v < m) m = v;
+      }
+      c[k] = Math.max(m, -w);
+    }
+  }
+  return c;
+}
+
+// the lowest a hollow cast's core is (mm): where it would be lower, there is none
+export const CORE_MIN = 0.4;
+
+// How much material there is straight above and below the cut: up to where the model is first left, not its
+// outermost surface, so a half that curves back in or is hollow isn't drilled through. A model made of overlapping
+// parts (a head pushed into a body) has surfaces buried inside it: going up a cell's line, the parts entered so far are
+// counted, and only where the count drops to none is the model left.
+function solidAround(pts, n, W, H, res, minx, maxy, z0) {
+  const N = W * H, ks = [], zs = [], ss = [];
+  sample(pts, n, W, H, res, minx, maxy, (k, z, side) => { ks.push(k); zs.push(z); ss.push(side); });
+  // the crossings grouped by cell, each cell's from the bottom up
+  const start = new Int32Array(N + 1);
+  for (const k of ks) start[k + 1]++;
+  for (let k = 0; k < N; k++) start[k + 1] += start[k];
+  const at = start.slice(0, N), order = new Int32Array(ks.length);
+  ks.forEach((k, c) => { order[at[k]++] = c; });
+  const above = new Float32Array(N).fill(z0), below = new Float32Array(N).fill(z0), broken = new Uint8Array(N);
+  for (let k = 0; k < N; k++) {
+    const list = Array.from(order.subarray(start[k], start[k + 1])).sort((a, b) => zs[a] - zs[b]);
+    if (!list.length) continue;
+    // crossings at one height count once, by which way they go on balance: a line through the edge between two
+    // triangles meets that surface twice, and one just touching the model (a corner, an outline) goes in and out
+    const enter = ss[list[0]], hz = [], hs = []; // the lowest crossing goes in
+    for (let a = 0; a < list.length;) {
+      const z = zs[list[a]];
+      let sum = 0;
+      for (; a < list.length && zs[list[a]] - z < 1e-5; a++) sum += ss[list[a]] === enter ? 1 : -1;
+      if (sum) { hz.push(z); hs.push(Math.sign(sum)); }
+    }
+    // a line through a crack in the mesh misses a surface, so it doesn't come out as often as it went in: it is
+    // filled in from its neighbours below
+    if (hs.reduce((a, b) => a + b, 0) !== 0) { broken[k] = 1; continue; }
+    let inside = 0, from = -Infinity;
+    for (let a = 0; a < hz.length; a++) {
+      const z = hz[a], was = inside;
+      inside += hs[a];
+      if (was <= 0 && inside > 0) from = z;
+      else if (was > 0 && inside <= 0) {
+        if (from <= z0 && z > z0) { below[k] = from; above[k] = z; break; }
+        if (from > z0) break;
+      }
+    }
+  }
+  for (let pass = 0; pass < 4; pass++) {
+    const fix = [];
+    for (let k = 0; k < N; k++) {
+      if (!broken[k]) continue;
+      let a = 0, b = 0, n = 0;
+      for (const q of neighbours(k, W, H)) if (q >= 0 && !broken[q]) { a += above[q]; b += below[q]; n++; }
+      if (n) fix.push(k, a / n, b / n);
+    }
+    for (let i = 0; i < fix.length; i += 3) { above[fix[i]] = fix[i + 1]; below[fix[i]] = fix[i + 2]; broken[fix[i]] = 0; }
+  }
+  return { above, below };
+}
+
 // p.pins pins spread evenly over the cut face: each sits in the middle of its own equal share of the face (k-means
 // over the spots where a pin fits), so none is pushed out to an edge. Each hole is as deep as 1.5 pin widths, but
 // leaves at least 1 mm of material behind it in both halves (thick: material above and below the cut, the thinner).
-// A pin closer than 2.5 widths to another is dropped.
-function placePins(cut, thick, W, H, res, p) {
+// A pin closer than 2.5 widths to another is dropped. In a hollow cast a pin only fits in the shell around the cut's
+// edge, between the outline and the cores: there 0.6 mm of material on either side of its hole is enough.
+function placePins(cut, thick, cores, W, H, res, p) {
   const N = W * H, outside = new Uint8Array(N);
   for (let k = 0; k < N; k++) outside[k] = cut[k] ? 0 : 1;
   const edge = distTo(outside, W, H), r = p.pinD / 2, R = Math.ceil(r / res);
+  const fromCore = cores && distTo(cores, W, H), margin = cores ? 0.6 : 1.5;
   // thinnest point of either half within the hole's reach (a square around it: slightly cautious)
   let thin = Float32Array.from(thick);
   for (const step of [1, W]) {
@@ -247,7 +366,7 @@ function placePins(cut, thick, W, H, res, p) {
     thin = out;
   }
   const depthAt = (k) => Math.min(1.5 * p.pinD, thin[k] - 1);
-  const ok = (k) => edge[k] >= (r + 1.5) / res && depthAt(k) >= Math.max(1.5, r);
+  const ok = (k) => edge[k] >= (r + margin) / res && depthAt(k) >= Math.max(1.5, r) && (!cores || fromCore[k] >= (r + margin) / res);
   const fits = [];
   for (let k = 0; k < N; k++) if (cut[k] && ok(k)) fits.push(k);
   if (!fits.length) return [];

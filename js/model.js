@@ -1,6 +1,7 @@
 // Building the object, the printed template and the silicone mold from a height map.
 import { t } from './i18n.js';
-import { blur, signedDist, fillHoles, smoothstep, neighbours } from './grid.js';
+import { blur, signedDist, fillHoles, smoothstep, neighbours, distTo } from './grid.js';
+import { CORE_MIN } from './stl.js';
 import { meshSolid, cylinder, joinMeshes } from './mesh.js';
 
 export function spreadColours(colors, mask, W, H) {
@@ -104,14 +105,23 @@ export function buildModel(hf, p) {
 
   // Alignment pins (halves only): a hole in the back of the cast for each (cut by exact.js), formed by a peg on a
   // printed lid that is laid on the filled mold. The lid also has two small holes for excess resin to escape.
+  // Hollow casts (halves only): the lid also carries a core that reaches into the mold, so the resin sets as a shell.
   const pins = (hf.pins || []).map((q) => ({ ...q, x: G.ox + (q.i + pad) * res, y: G.oy - (q.j + pad) * res }));
+  let core = null; // (see stl.js hollowCore)
+  if (hf.core) {
+    core = new Float32Array(N).fill(-p.hollow);
+    for (let j = 0; j < hf.H; j++) for (let i = 0; i < hf.W; i++) core[(j + pad) * W + i + pad] = hf.core[j * hf.W + i];
+  }
   let lid = null;
-  if (pins.length) {
-    const vents = [], ventR = 1, taken = pins.map((q) => [q.x, q.y]);
+  if (pins.length || core) {
+    // with a core, the vents go over the shell, between the outline and the core's (smaller in a thin shell; where
+    // none fits anywhere, there are none)
+    const ventR = core ? Math.max(0.4, Math.min(1, (p.hollow - 0.6) / 2)) : 1, vents = [], taken = pins.map((q) => [q.x, q.y]);
+    const fromCore = core && distTo(core.map((c) => (c > CORE_MIN ? 1 : 0)), W, H);
     for (let n = 0; n < 2; n++) {
       let best = null, score = 3 + ventR;
       for (let k = 0; k < N; k++) {
-        if (sdfPlaque[k] < ventR + 1) continue;
+        if (sdfPlaque[k] < ventR + (core ? 0.3 : 1) || (core && fromCore[k] * res < ventR + 0.3)) continue;
         const x = G.ox + (k % W) * res, y = G.oy - ((k / W) | 0) * res;
         const s = Math.min(...taken.map(([a, b]) => Math.hypot(x - a, y - b)));
         if (s > score) { score = s; best = [x, y]; }
@@ -135,6 +145,14 @@ export function buildModel(hf, p) {
       plate: meshSolid(G, sdfLid, 0, lidTop),
       pegs: joinMeshes(pins.map((q) => [cylinder(q.x, q.y, q.r, B - 0.05, B + q.d)])),
     };
+    if (core) {
+      const top = new Float32Array(N);
+      // the same field for both, so its outline (CORE_MIN) has the same height all round
+      for (let k = 0; k < N; k++) { top[k] = B + core[k]; core[k] -= CORE_MIN; }
+      lid.core = meshSolid(G, core, B - 0.05, top);
+      if (!lid.core.P.length) lid.core = null;
+    }
+    if (!pins.length && !lid.core) lid = null; // too thin to hollow out: no lid needed
   }
 
   const geo = {
@@ -190,7 +208,7 @@ export function buildHalves([A, Bm], p) {
   };
   if (withLids) {
     const lids = [];
-    for (const [M, x] of [[A, -dx], [Bm, dx]]) if (M.lid) lids.push([M.lid.plate, x, yLid], [M.lid.pegs, x, yLid]);
+    for (const [M, x] of [[A, -dx], [Bm, dx]]) if (M.lid) for (const m of [M.lid.plate, M.lid.pegs, M.lid.core]) if (m) lids.push([m, x, yLid]);
     geo.lid = joinMeshes(lids);
     const gap = 3, total = pinParts.reduce((s, q) => s + 2 * q.r + gap, -gap);
     let x = -total / 2;

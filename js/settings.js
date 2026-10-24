@@ -32,6 +32,8 @@ export const PARAMS = [
     hint: 'pinsHelp' },
   { id: 'pinD', label: 'pinDiameter', unit: 'mm', min: 1.5, max: 8, step: 0.5, val: 3, only: 'stl', modes: 'split-pins',
     hint: 'pinDiameterHelp' },
+  { id: 'hollow', label: 'hollow', unit: 'mm', min: 0, max: 10, step: 0.5, val: 0, zero: 'solid', only: 'stl', modes: 'split split-pins',
+    hint: 'hollowHelp' },
   { id: 'reliefH', label: 'depthRange', unit: 'mm', min: 0, max: 25, step: 0.5, val: 3, only: 'image', fresh: true,
     hint: 'depthRangeHelp' },
   { id: 'flatten', label: 'flattening', unit: '', min: 0, max: 1, step: 0.05, val: 0.6, only: 'image', modes: 'sculpt', fresh: true,
@@ -200,7 +202,7 @@ export function showValue(d) {
   const o = $('#o-' + d.id);
   if (!o) return;
   const v = slider(d, parseFloat($('#p-' + d.id).value));
-  o.textContent = `${v}${d.unit ? ' ' + d.unit : ''}`;
+  o.textContent = v === 0 && d.zero ? t(d.zero) : `${v}${d.unit ? ' ' + d.unit : ''}`; // zero: what 0 is called
   o.closest('.ctl').classList.toggle('changed', Math.abs(v - defaultOf(d)) > 1e-9);
 }
 export function setParam(id, v) {
