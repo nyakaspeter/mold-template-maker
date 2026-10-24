@@ -3,7 +3,7 @@ import { BufferGeometry, BufferAttribute } from 'https://cdn.jsdelivr.net/npm/th
 import { setLang, t } from './i18n.js';
 import { aiDepth, aiMatte } from './depth.js';
 import { guidedMatte } from './matte.js';
-import { hfFromImage } from './relief.js';
+import { hfFromImage, subjectBox } from './relief.js';
 import { hfFromSTL, halvesFromSTL, bestCut, originalMesh } from './stl.js';
 import { buildModel, buildHalves } from './model.js';
 import { exactHalves } from './exact.js';
@@ -54,21 +54,34 @@ self.onmessage = async ({ data: job }) => {
       geom = new BufferGeometry();
       geom.setAttribute('position', new BufferAttribute(job.positions, 3));
     }
-    const wantAI = kind === 'image' && p.depthMode !== 'bright';
-    if (wantAI && aiModel !== p.depthModel) { ai = null; aiFailed = false; aiModel = p.depthModel; }
-    if (wantAI && !ai && !aiFailed) {
-      try { ai = await aiDepth(img, status, p.depthModel); }
-      catch (error) { aiFailed = true; console.error(error); }
-    }
-    // the AI cut-out (when, see app.js: never for a picture with its own transparency)
+    // the AI cut-out first (when, see app.js: never for a picture with its own transparency)
     const wantMatte = kind === 'image' && p.aiCutout;
     if (wantMatte && !matte && !matteFailed) {
       try { matte = await aiMatte(img, status); }
       catch (error) { matteFailed = true; console.error(error); }
     }
     p.cutout = wantMatte && !!matte;
+    const picture = p.cutout ? cutOut(img, matte) : img;
+    // AI depth of the subject: the models see a fixed-size copy, so the picture cropped to the subject and a margin
+    // (the nearby scene, for context) gives them more detail on it. It is estimated again only when a painted outline
+    // reaches beyond the crop.
+    const wantAI = kind === 'image' && p.depthMode !== 'bright';
+    if (wantAI && aiModel !== p.depthModel) { ai = null; aiFailed = false; aiModel = p.depthModel; }
+    if (wantAI && !aiFailed) {
+      const { box } = subjectBox(picture, p, edit), m = 0.1 * Math.max(box.x1 - box.x0, box.y1 - box.y0);
+      const x0 = Math.max(0, Math.floor(box.x0 - m)), y0 = Math.max(0, Math.floor(box.y0 - m));
+      const crop = { x: x0, y: y0, w: Math.min(img.width, Math.ceil(box.x1 + m)) - x0, h: Math.min(img.height, Math.ceil(box.y1 + m)) - y0 };
+      const c = ai?.crop;
+      if (c && (box.x0 < c.x || box.y0 < c.y || box.x1 > c.x + c.w || box.y1 > c.y + c.h)) ai = null;
+      if (!ai) {
+        const part = new OffscreenCanvas(crop.w, crop.h);
+        part.getContext('2d').drawImage(img, -crop.x, -crop.y);
+        try { ai = await aiDepth(part, status, p.depthModel); ai.crop = crop; }
+        catch (error) { aiFailed = true; console.error(error); }
+      }
+    }
     if (autoCut) p.splitAt = bestCut(geom, p);
-    const hf = kind === 'image' ? hfFromImage(wantMatte && matte ? cutOut(img, matte) : img, wantAI ? ai : null, p, edit)
+    const hf = kind === 'image' ? hfFromImage(picture, wantAI ? ai : null, p, edit)
       : split ? halvesFromSTL(geom, p) : hfFromSTL(geom, p);
     let model;
     if (split) {

@@ -3,14 +3,20 @@ import { blur, distTo, smoothstep, fitGrid, sampleImage, sampleField, lumAt, nei
 import { editCells, shapeMask, reopenBackgroundHoles } from './outline.js';
 import { sculptRelief } from './sculpt.js';
 
-export function hfFromImage(img, aiDepth, p, edit) {
-  // low-resolution pass over the whole image: the background colour, and where the shape is
+// Low-resolution pass over the whole image: the background colour, and where the shape is (its box in picture
+// pixels; the whole picture if no shape is found).
+export function subjectBox(img, p, edit) {
   const pw = 400, ph = Math.max(8, Math.round(pw * img.height / img.width));
   const full = { x: 0, y: 0, w: img.width, h: img.height };
   const pm = shapeMask(sampleImage(img, full, pw, ph), pw, ph, { ...p, edit: editCells(edit, img, full, pw, ph) });
-  const q = { ...p, bgc: pm.bgc };
   const pb = maskBox(pm, pw, ph), sx = img.width / pw, sy = img.height / ph;
-  let box = pb ? { x0: pb.x0 * sx, y0: pb.y0 * sy, x1: pb.x1 * sx, y1: pb.y1 * sy } : { x0: 0, y0: 0, x1: img.width, y1: img.height };
+  return { bgc: pm.bgc, box: pb ? { x0: pb.x0 * sx, y0: pb.y0 * sy, x1: pb.x1 * sx, y1: pb.y1 * sy } : { x0: 0, y0: 0, x1: img.width, y1: img.height } };
+}
+
+// aiDepth may cover only a crop of the picture (`crop`, in picture pixels; see build-worker.js).
+export function hfFromImage(img, aiDepth, p, edit) {
+  const quick = subjectBox(img, p, edit), q = { ...p, bgc: quick.bgc };
+  let box = quick.box;
   // full pass on the shape plus a margin; the grid is scaled so the shape itself is "Object width" wide.
   // If the full pass finds a different extent than the quick one, rescale once.
   let W, H, res, px, mask, N, rect, mmPerPx;
@@ -37,8 +43,8 @@ export function hfFromImage(img, aiDepth, p, edit) {
   const sculpt = p.depthMode === 'sculpt' && aiDepth?.geo;
   let geo = null;
   if (aiDepth) {
-    const ax = aiDepth.width / img.width, ay = aiDepth.height / img.height;
-    const r = { x: rect.x * ax, y: rect.y * ay, w: rect.w * ax, h: rect.h * ay };
+    const c = aiDepth.crop || { x: 0, y: 0, w: img.width, h: img.height }, ax = aiDepth.width / c.w, ay = aiDepth.height / c.h;
+    const r = { x: (rect.x - c.x) * ax, y: (rect.y - c.y) * ay, w: rect.w * ax, h: rect.h * ay };
     const field = (data) => sampleField({ width: aiDepth.width, height: aiDepth.height, data }, r, W, H);
     val = field(aiDepth.data);
     // in drawings the paper inside the outlines looks as far away as the background, so only shaded images, and not
