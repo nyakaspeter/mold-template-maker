@@ -24,11 +24,18 @@ export const PARAMS = [
     hint: 'orientationHelp' },
   { id: 'width', label: 'objectWidth', unit: 'mm', min: 10, max: 250, step: 1, val: 80, only: 'image' },
   { id: 'scale', label: 'scale', unit: '%', min: 10, max: 400, step: 5, val: 100, only: 'stl' },
+  // the mold type: 'no' one open mold, 'closed' a two-part mold, 'yes' cut into halves that are glued together
   { id: 'split', label: 'split', type: 'select', val: 'auto', only: 'stl', fresh: true,
-    options: [['auto', 'auto'], ['yes', 'yes'], ['no', 'no']],
+    options: [['auto', 'auto'], ['no', 'openMold'], ['closed', 'twoPart'], ['yes', 'gluedHalves']],
     hint: 'splitHelp' },
-  { id: 'splitAt', label: 'cutHeight', unit: '%', min: 5, max: 95, step: 1, val: 50, only: 'stl', modes: 'split split-pins', fresh: true,
+  { id: 'splitAt', label: 'cutHeight', unit: '%', min: 5, max: 95, step: 1, val: 50, only: 'stl', modes: 'split split-pins closed', fresh: true,
     hint: 'cutHeightHelp' },
+  { id: 'sprueD', label: 'pourHole', unit: 'mm', min: 3, max: 12, step: 0.5, val: 6, only: 'stl', modes: 'closed',
+    hint: 'pourHoleHelp' },
+  { id: 'keys', label: 'keys', unit: '', min: 0, max: 10, step: 1, val: 4, only: 'stl', modes: 'closed',
+    hint: 'keysHelp' },
+  { id: 'keyD', label: 'keyDiameter', unit: 'mm', min: 2, max: 10, step: 0.5, val: 3, only: 'stl', modes: 'closed', when: 'keys',
+    hint: 'keyDiameterHelp' },
   { id: 'pins', label: 'pins', unit: '', min: 0, max: 10, step: 1, val: 0, only: 'stl', modes: 'split split-pins',
     hint: 'pinsHelp' },
   { id: 'pinD', label: 'pinDiameter', unit: 'mm', min: 1.5, max: 8, step: 0.5, val: 3, only: 'stl', modes: 'split-pins',
@@ -98,21 +105,28 @@ export const PARAMS = [
     hint: 'edgeRoundingHelp' },
 ];
 export const GEOMETRY_MODELS = ['4']; // the Depth model choices that estimate the surface (js/depth.js GEOMETRY)
+// Kept for each: pictures (image) and an STL's open mold (stl), glued halves (glued) and two-part mold (closed), whose
+// silicone rim holds the keys and whose template floor their hollows. The mold template's settings are among them.
+const MOLD = { gap: 3, over: 4, wallT: 2, baseT: 2 };
 export const DEFAULTS = {
-  image: { backT: 2, border: 0 },
-  stl: { backT: 0, border: 0, reliefSmooth: 0, maskSmooth: 0.4 },
+  image: { ...MOLD, backT: 2, border: 0 },
+  stl: { ...MOLD, backT: 0, border: 0, reliefSmooth: 0, maskSmooth: 0.4 },
 };
+DEFAULTS.glued = { ...DEFAULTS.stl };
+DEFAULTS.closed = { ...DEFAULTS.stl, gap: 6, baseT: 4 };
 
 // Remembered in this browser: settings that don't start fresh with each file (sizes, the mold template, the pins)
-// and which sections are open. Settings whose default differs between images and STLs are kept per file type.
+// and which sections are open. The mold template's settings, and others whose default differs between images and an
+// STL's kinds of mold, are kept for each of them (the values shown are valueKind's).
 export const store = {
   get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage blocked: not remembered */ } },
 };
 export const kept = (d) => d.id && !d.fresh;
-export const perKind = (d) => d.id in DEFAULTS.image || d.id in DEFAULTS.stl;
+export const perKind = (d) => Object.values(DEFAULTS).some((o) => d.id in o);
 export function savedValue(d, kind) {
-  const saved = store.get('settings', {}), v = perKind(d) ? saved[kind]?.[d.id] : saved[d.id];
+  // (a value from before it was kept for each: the one kept for all, but a two-part mold has its own defaults)
+  const saved = store.get('settings', {}), v = perKind(d) ? saved[kind]?.[d.id] ?? (kind !== 'closed' ? saved[d.id] : undefined) : saved[d.id];
   // nothing remembered, or a value that no longer fits the setting (it has changed since): the default
   const fits = d.options ? d.options.some(([o]) => o === v) : typeof v === (d.type === 'check' ? 'boolean' : 'number');
   return fits ? v : DEFAULTS[kind]?.[d.id] ?? d.val;
@@ -120,8 +134,15 @@ export function savedValue(d, kind) {
 export function saveSetting(d) {
   if (!kept(d)) return;
   const saved = store.get('settings', {}), v = readParams()[d.id];
-  if (perKind(d)) (saved[shownKind] ||= {})[d.id] = v; else saved[d.id] = v;
+  if (perKind(d)) (saved[valueKind] ||= {})[d.id] = v; else saved[d.id] = v;
   store.set('settings', saved);
+}
+// which values show: 'image', 'stl', 'glued' or 'closed'; switching shows the ones remembered for the other
+export let valueKind = 'image';
+export function showValuesOf(kind) {
+  if (kind === valueKind) return;
+  valueKind = kind;
+  for (const d of PARAMS) if (kept(d) && perKind(d)) setParam(d.id, savedValue(d, kind));
 }
 
 // onChange runs after any setting is changed or reset
@@ -197,7 +218,7 @@ const mirror = (d, v) => (d.reverse ? Math.round((d.min + d.max - v) * 1e6) / 1e
 // a slider with a name for 0 (zero) whose minimum is above 0: its leftmost position is 0
 const fromPos = (d, pos) => (d.zero && d.min > 0 && pos <= d.min ? 0 : mirror(d, pos));
 const toPos = (d, v) => (d.zero && v < d.min ? d.min : mirror(d, v));
-export const defaultOf = (d) => (S.auto && d.id in S.auto ? S.auto[d.id] : DEFAULTS[shownKind]?.[d.id] ?? d.val);
+export const defaultOf = (d) => (S.auto && d.id in S.auto ? S.auto[d.id] : DEFAULTS[valueKind]?.[d.id] ?? d.val);
 // the Reset all button shows while any setting is away from its default
 function showResetAll() {
   const btn = $('#resetAll');

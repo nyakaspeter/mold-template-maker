@@ -4,7 +4,7 @@ import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { $ } from './dom.js';
 import { S } from './state.js';
 import { t, getLang, setLang, LANGS, FLAGS } from './i18n.js';
-import { PARAMS, DEFAULTS, GEOMETRY_MODELS, store, defaultOf, kept, perKind, savedValue, buildControls, setParam, readParams, showFor } from './settings.js';
+import { PARAMS, DEFAULTS, GEOMETRY_MODELS, store, defaultOf, kept, savedValue, showValuesOf, buildControls, setParam, readParams, showFor } from './settings.js';
 import { STYLE_PRESETS, SHADED, analyzeImage } from './style.js';
 import { detectSTL } from './stl.js';
 import { buildInWorker } from './build-client.js?v=3';
@@ -45,8 +45,8 @@ function updateCaption() {
   if (!M) { $('#caption').innerHTML = ''; dl.hidden = true; return; }
   const s = M.stats, parts = M.parts || [{ ...s, B: M.B }]; // two halves: both sizes
   const sizes = (f) => parts.map(f).join(' + ');
-  const [spec, label] = { // the stage's name is already on its tab
-    1: [t('castingStats', { size: sizes((q) => size3(q.obj, q.objH)), ml: f1(s.castMl) }), 'downloadObject'],
+  const [spec, label] = { // the stage's name is already on its tab (a two-part mold casts the whole object)
+    1: [t('castingStats', { size: M.whole ? size3(M.whole.obj, M.whole.objH) : sizes((q) => size3(q.obj, q.objH)), ml: f1(s.castMl) }), 'downloadObject'],
     2: [t('templateStats', { size: sizes((q) => size3(q.tpl, q.tplH)), ml: Math.ceil(s.silMl), g: Math.ceil(s.silMl * 1.1) }), 'downloadTemplate'],
     3: [t('moldStats', { size: sizes((q) => size3(q.sil, q.tplH - q.B)), ml: f1(s.castMl) }), 'downloadMold'],
   }[step];
@@ -79,7 +79,8 @@ function applyStyle(type) {
     ...(type !== 'photo' && { lineDepth: STYLE_PRESETS[type].lineDepth, edgeDepth: STYLE_PRESETS[type].edgeDepth }) } : STYLE_PRESETS[type];
   for (const [k, v] of Object.entries(S.auto)) if ($('#p-' + k)) setParam(k, v); // the rest are set automatically (regen)
 }
-// the Auto choices name what was detected, e.g. "Auto (Flat cartoon)", "Auto (Yes)" (Orientation shows a reset button)
+// the Auto choices name what was detected, e.g. "Auto (Flat cartoon)", "Auto (Glued halves)" (Orientation shows a reset
+// button)
 function autoLabel() {
   const o = $('#p-picType option[value="auto"]'), d = PARAMS.find((x) => x.id === 'picType');
   if (o && S.detected) o.textContent = t('autoDetected', { type: t(d.options.find(([v]) => v === S.detected)[1]) });
@@ -89,22 +90,37 @@ function autoLabel() {
     m.textContent = t('autoDetected', { type: t(dm.options.find(([v]) => v === used)[1]) });
   }
   const c = $('#p-split option[value="auto"]');
-  if (c && S.stlAuto) c.textContent = t('autoDetected', { type: t(stlChoice({ ...readParams(), split: 'auto' }).split ? 'yes' : 'no') });
+  if (c && S.stlAuto) {
+    const auto = stlChoice({ ...readParams(), split: 'auto' });
+    c.textContent = t('autoDetected', { type: t(auto.closed ? 'twoPart' : auto.split ? 'gluedHalves' : 'openMold') });
+  }
 }
 // an orientation picked in the 3D view of the Orientation setting: Auto's own position is Auto again, and the
 // position already in use changes nothing
 function pickSide(up) {
-  const e = $('#p-stlUp'), value = up === S.stlAuto.up ? 'auto' : up;
+  const e = $('#p-stlUp'), value = up === stlChoice({ ...readParams(), stlUp: 'auto' }).up ? 'auto' : up;
   if (value === e.value) return;
   e.value = value; e.dispatchEvent(new Event('input'));
 }
-// The STL's up side and whether it is cut, with Auto worked out: cut when there's no flat back facing down
+// The STL's up side and whether it is cut, with Auto worked out. A two-part mold (closed) is cut too, but its halves
+// are only the mold's: pressed together, they are filled as one. Its Auto side lies the model down with its flat
+// bottom, if any, at the front, where the mold is left open (stl.js detectSTL). Mold type Auto: an open mold with a
+// flat back facing down; else a two-part mold lying on its flat bottom's side; else glued halves.
 function stlChoice(p) {
-  const up = p.stlUp === 'auto' ? S.stlAuto.up : p.stlUp; // a side, maybe with quarter turns: 'y:1'
-  return { up, split: p.split === 'auto' ? !S.stlAuto.flats.includes(up.split(':')[0]) : p.split === 'yes' };
+  const A = S.stlAuto;
+  let type = p.split, up = p.stlUp; // up: a side, maybe with quarter turns: 'y:1'
+  if (type === 'auto') {
+    type = A.flats.includes((up === 'auto' ? A.up : up).split(':')[0]) ? 'no'
+      : A.closedUp && (up === 'auto' || up === A.closedUp) ? 'closed' : 'yes';
+  }
+  if (up === 'auto') up = type === 'closed' && A.closedUp || A.up;
+  return { up, closed: type === 'closed', split: type === 'yes' || type === 'closed' };
 }
-// for STLs the "method" is whether it is cut into halves, with or without pins: it decides which settings show
-const stlMethod = (p) => (stlChoice(p).split ? (p.pins ? 'split-pins' : 'split') : 'whole');
+// for STLs the "method" is whether it is cut into halves, with or without pins, or a two-part mold: it decides which
+// settings show
+const stlMethod = (p) => { const c = stlChoice(p); return c.closed ? 'closed' : c.split ? (p.pins ? 'split-pins' : 'split') : 'whole'; };
+// whose remembered values show (settings.js DEFAULTS): each kind of mold has its own mold template settings
+const valuesKind = () => (S.kind !== 'stl' ? 'image' : S.method === 'closed' ? 'closed' : S.method.startsWith('split') ? 'glued' : 'stl');
 // any setting changed: a new picture type first applies its method and settings
 function settingChanged(id) {
   const p = readParams();
@@ -118,9 +134,9 @@ function settingChanged(id) {
   if (S.kind === 'stl') {
     // A manual cut chosen during the first background build takes precedence over Auto.
     if (id === 'splitAt') S.splitKey = `${p.scale}|${stlChoice(p).up}`;
-    autoLabel(); // "Auto (Yes)" can change with the up side
+    autoLabel(); // "Auto (Glued halves)" can change with the up side
     showOrient(stlChoice(p).up); // e.g. back to Auto's side after the reset
-    if (stlMethod(p) !== S.method) { S.method = stlMethod(p); showFor(); }
+    if (stlMethod(p) !== S.method) { S.method = stlMethod(p); showValuesOf(valuesKind()); showFor(); }
   }
   if (PARAMS.some((d) => d.when === id)) showFor(); // settings shown only while this one is on
   schedule();
@@ -142,17 +158,11 @@ function resetAll() {
 // ---------------------------------------------------------------- loading files
 function loadSource(kind, data, name) {
   sourceId++;
-  const prevKind = S.kind;
   S.kind = kind; S.name = name;
   if (kind === 'image') { S.img = data; S.geom = null; } else { S.geom = data; S.img = null; }
   // every new file starts with fresh settings where marked (how it is read and shaped); others keep your values,
-  // except where images and STLs need different ones and the file type changed
-  const kindChanged = kind !== prevKind;
-  for (const d of PARAMS) {
-    if (!d.id) continue;
-    if (d.fresh) setParam(d.id, DEFAULTS[kind][d.id] ?? d.val);
-    else if (kindChanged && perKind(d)) setParam(d.id, savedValue(d, kind));
-  }
+  // except where images, STLs and two-part molds need different ones (below, once the mold type is known)
+  for (const d of PARAMS) if (d.id && d.fresh) setParam(d.id, DEFAULTS[kind][d.id] ?? d.val);
   if (kind === 'image') {
     dropOrient(); // the Orientation view is for STLs only
     ({ type: S.detected, scene: S.scene, transparent: S.transparent, shading: S.shading } = analyzeImage(data)); S.picType = 'auto';
@@ -161,10 +171,11 @@ function loadSource(kind, data, name) {
   } else {
     // which side goes down, and whether to cut it, are worked out from the shape (both can be changed)
     S.auto = null; S.splitKey = null; S.stlAuto = detectSTL(data, readParams());
-    setOrientModel(data); showOrient(S.stlAuto.up, true);
+    setOrientModel(data); showOrient(stlChoice(readParams()).up, true);
     S.method = stlMethod(readParams());
     autoLabel();
   }
+  showValuesOf(valuesKind());
   showFor(kind);
   $('#srcName').textContent = name;
   S.edit = null; S.editUsed = false; S.editDirty = false; resetEditor();
@@ -245,9 +256,12 @@ async function regen(my, p) {
     // shaded pictures: the rounded rim rises with Edge rounding, in the proportion the preset gives them
     if (S.method !== 'cartoon') p.puff = (preset.puff ?? 0) * (preset.edgeSoft ? p.edgeSoft / preset.edgeSoft : 1);
   }
-  const split = kind === 'stl' && stlChoice(p).split;
-  if (kind === 'stl') p.stlUp = stlChoice(p).up;
+  const choice = kind === 'stl' ? stlChoice(p) : {}, split = !!choice.split;
+  if (kind === 'stl') p.stlUp = choice.up;
   if (split) { p.backT = 0; p.border = 0; p.hanger = 0; }
+  // a two-part mold has no pins or cores
+  p.closed = !!choice.closed;
+  if (p.closed) { p.pins = 0; p.hollow = 0; }
   const splitKey = `${p.scale}|${p.stlUp}`;
   const autoCut = split && S.splitKey !== splitKey;
   const notFlat = kind === 'stl' && (split || !S.stlAuto.flats.includes(p.stlUp.split(':')[0]));
@@ -315,7 +329,7 @@ function applyLang() {
   buildControls(settingChanged);
   attachOrient($('#box-stlUp'), pickSide);
   if (values) for (const d of PARAMS) if (d.id) setParam(d.id, values[d.id]);
-  autoLabel(); // after the values are back: "Auto (Yes)" depends on them
+  autoLabel(); // after the values are back: "Auto (Glued halves)" depends on them
   showFor();
   updateCaption();
 }

@@ -16,19 +16,23 @@ export function spreadColours(colors, mask, W, H) {
   }
   return colors;
 }
-export function buildModel(hf, p) {
+export function buildModel(hf, p, first = null) {
   const res = hf.res, B = p.baseT, T = p.backT;
   const border = p.border, gap = p.gap, wallT = p.wallT, over = p.over;
-  // (with a hanger loop, room for it above the object)
-  const pad = Math.ceil((border + gap + wallT + 1.5 + (p.hanger ? p.hanger + 2 * p.hangerT + 1 : 0)) / res) + 3;
+  // (with a hanger loop, room for it above the object; with pins, for the tab they are cast on, see pinTab: both halves
+  // get it, so their grids stay the same size. A pin is at most 3 pin widths long, see stl.js placePins)
+  const pad = Math.ceil((border + gap + wallT + 1.5 + (p.hanger ? p.hanger + 2 * p.hangerT + 1 : 0)
+    + (hf.pins?.length ? 3 * p.pinD + 2 * PIN_WALL : 0)) / res) + 3;
   const W = hf.W + 2 * pad, H = hf.H + 2 * pad, N = W * H;
-  const mask = new Uint8Array(N);
+  const mask = new Uint8Array(N), shell = hf.shell && new Uint8Array(N), cut = hf.cut && new Uint8Array(N);
   let relief = new Float32Array(N), lines = new Float32Array(N);
   const colors = hf.px ? new Uint8Array(N * 3) : null; // image colours, for the optional painted preview
   for (let j = 0; j < hf.H; j++) {
     for (let i = 0; i < hf.W; i++) {
       const k = (j + pad) * W + i + pad;
       mask[k] = hf.mask[j * hf.W + i]; relief[k] = hf.relief[j * hf.W + i];
+      if (shell) shell[k] = hf.shell[j * hf.W + i];
+      if (cut) cut[k] = hf.cut[j * hf.W + i];
       if (hf.lines) lines[k] = hf.lines[j * hf.W + i];
       if (hf.px) for (let c = 0; c < 3; c++) colors[k * 3 + c] = hf.px[(j * hf.W + i) * 4 + c];
     }
@@ -86,6 +90,22 @@ export function buildModel(hf, p) {
   const G = { W, H, res, ox: -(W - 1) * res / 2, oy: (H - 1) * res / 2 };
   const hanger = p.hanger > 0 ? hangerLoop(G, sdfPlaque, relief, T, p.hanger / 2, p.hangerT, p.hangerShift) : null;
   for (let k = 0; k < N; k++) sdfCav[k] = sdfPlaque[k] + gap;
+  let sdfShell = null;
+  if (shell) { // a two-part mold's halves: the whole object's outline (stl.js halvesFromSTL)
+    sdfShell = signedDist(shell, W, H);
+    for (let k = 0; k < N; k++) sdfShell[k] *= res;
+    if (p.maskSmooth > 0) sdfShell = blur(sdfShell, W, H, p.maskSmooth / res);
+    for (let k = 0; k < N; k++) sdfCav[k] = Math.max(sdfCav[k], sdfShell[k] + border + 1e-4 + gap);
+  }
+  // a flat side of it at the edge (stl.js flatEdge): the mold ends there, its wall just inside the model, so the
+  // side is left open to pour through (the lower half's is mirrored, like its height map)
+  const opening = shell && (first ? first.closed.opening && { ...first.closed.opening, nx: -first.closed.opening.nx } : hf.opening);
+  if (opening) {
+    for (let k = 0; k < N; k++) {
+      const x = G.ox + (k % W) * res, y = G.oy - ((k / W) | 0) * res;
+      sdfCav[k] = Math.min(sdfCav[k], opening.c - opening.depth - (opening.nx * x + opening.ny * y));
+    }
+  }
   // Openings in the object wider than the gap (between legs, beside a face) would otherwise get walls of their
   // own. The wall only follows the outside; enclosed openings are filled with silicone, which keeps them open in the cast.
   const cav = new Uint8Array(N);
@@ -93,6 +113,8 @@ export function buildModel(hf, p) {
   const filled = Uint8Array.from(cav);
   fillHoles(filled, W, H);
   for (let k = 0; k < N; k++) if (filled[k] && !cav[k]) sdfCav[k] = Math.max(-sdfCav[k], 0.05);
+  // glued halves' alignment pins, one per pair of holes and a little loose, cast on a tab of the first half's mold
+  const pinCasts = hf.castPins ? pinTab(G, sdfCav, hf.pins.map((q) => ({ r: q.r - 0.15, len: 2 * q.d - 0.6 }))) : [];
   for (let k = 0; k < N; k++) {
     sdfOut[k] = sdfCav[k] + wallT;
     ring[k] = Math.min(sdfOut[k], -sdfCav[k]);
@@ -102,6 +124,8 @@ export function buildModel(hf, p) {
     if (sdfPlaque[k] > 0 && objTop[k] > maxTop) maxTop = objTop[k];
   }
   const Ztop = B + maxTop + over;
+  // two-part molds: keys and the pour hole, placed on the upper half's mold and mirrored onto the lower one's
+  const closed = shell && (first ? mirrorClosed(first.closed) : closedParts(G, shell, sdfShell, cut, sdfCav, sdfOut, opening, p));
 
   // Alignment pins (halves only): a hole in the back of the cast for each (cut by exact.js), formed by a peg on a
   // printed lid that is laid on the filled mold. The lid also has two small holes for excess resin to escape.
@@ -184,7 +208,7 @@ export function buildModel(hf, p) {
   const painted = colors && spreadColours(colors, mask, W, H);
   if (painted && hanger) for (const k of hanger.cells) painted.copyWithin(k * 3, hanger.from * 3, hanger.from * 3 + 3);
   return {
-    G, geo, lid, pins, B, Ztop, maxTop, res, p, colors: painted, hanger: hanger?.mesh,
+    G, geo, lid, pins, pinCasts, closed, B, Ztop, maxTop, res, p, colors: painted, hanger: hanger?.mesh,
     sdfCav, // the template's inside outline, for exact STL halves
     stats: { castMl: cast * a, silMl: sil * a, obj: dims(bo), tpl: dims(bt), sil: dims(bc), objH: maxTop, tplH: Ztop },
   };
@@ -233,16 +257,102 @@ function hangerLoop(G, sdf, relief, T, r, wall, shift) {
   return { cells, from: inside, mesh: meshSolid(G, loop, 0, thick) };
 }
 
+// A two-part mold's keys and pour hole (cut by exact.js). Its two silicone halves are pressed together face to face and
+// filled as one, so the cast is the whole object: through its flat side left open at the mold's edge (opening), or
+// else through a pour hole. Keys: up to p.keys balls of diameter p.keyD centred on the template's floor (z = B), on the
+// upper half's template standing up (the silicone gets hollows), on the lower one's sunk into the floor (it gets
+// bumps). Each goes only where the silicone around it is at least KEY_WALL thick, towards the object and the outside
+// (also the opening and the pour hole), as far as can be from the others: the first as far out as can be, each next
+// one as far as can be from those before. There are none if the base is too thin for their hollows (KEY_FLOOR under
+// them). The pour hole: a round channel of diameter p.sprueD lying on the floor, half
+// in each silicone face, from the lowest point of the cut face straight down to the outside, where it widens into a
+// funnel.
+const KEY_WALL = 1, KEY_FLOOR = 0.9;
+function closedParts(G, shell, sdfShell, cut, sdfCav, sdfOut, opening, p) {
+  const { W, H, res, ox, oy } = G, N = W * H;
+  const x = (k) => ox + (k % W) * res, y = (k) => oy - ((k / W) | 0) * res;
+  let cx = 0, cy = 0, n = 0;
+  for (let k = 0; k < N; k++) if (shell[k]) { cx += x(k); cy += y(k); n++; }
+  cx /= n; cy /= n;
+  // the lowest cell of the cut face, the one nearest the middle among equals
+  let low = -1;
+  for (let k = 0; k < N; k++) {
+    if (!cut[k]) continue;
+    if (low < 0 || y(k) < y(low) - 1e-6 || (y(k) < y(low) + 1e-6 && Math.abs(x(k) - cx) < Math.abs(x(low) - cx))) low = k;
+  }
+  let sprue = null;
+  if (!opening) {
+    const r = p.sprueD / 2;
+    let k = low;
+    while (k + W < N && sdfCav[k + W] > 0) k += W;
+    const ySil = y(k); // the silicone's outside
+    while (k + W < N && sdfOut[k + W] > 0) k += W;
+    sprue = { x: x(low), y0: y(low) + Math.min(1, r), y1: y(k), ySil, r, R: 1.8 * r };
+  }
+  const keys = [], r = p.keyD / 2, room = r + KEY_WALL;
+  if (p.keys > 0 && r + KEY_FLOOR <= p.baseT) {
+    // (sdfCav is never more than the distance to the silicone's outside, so this is on the safe side)
+    const fromOpening = (q) => (opening ? opening.c - opening.depth - (opening.nx * x(q) + opening.ny * y(q)) : Infinity);
+    const nearSprue = (q) => sprue && Math.abs(x(q) - sprue.x) < sprue.R + room && y(q) < sprue.y0 + room;
+    const fits = [];
+    for (let q = 0; q < N; q++) {
+      if (-sdfShell[q] - p.border >= room && sdfCav[q] >= room && fromOpening(q) >= room && !nearSprue(q)) fits.push(q);
+    }
+    const step = Math.ceil(fits.length / 20000), spots = fits.filter((_, i) => i % step === 0); // enough to choose from
+    const near = new Float32Array(spots.length).fill(Infinity); // each spot's distance to the nearest key so far
+    let next = spots.reduce((b, q, i) => (Math.hypot(x(q) - cx, y(q) - cy) > Math.hypot(x(spots[b]) - cx, y(spots[b]) - cy) ? i : b), 0);
+    while (spots.length && keys.length < p.keys) {
+      const q = spots[next];
+      keys.push({ x: x(q), y: y(q), r, bump: true });
+      next = -1;
+      spots.forEach((s, i) => {
+        near[i] = Math.min(near[i], Math.hypot(x(s) - x(q), y(s) - y(q)));
+        if (near[i] >= 2 * r + KEY_WALL && (next < 0 || near[i] > near[next])) next = i;
+      });
+      if (next < 0) break; // no room for another
+    }
+  }
+  return { keys, sprue, opening };
+}
+// Glued halves' alignment pins are cast with the halves, lying side by side in channels on a tab added to the bottom of
+// the first half's mold (cut by exact.js), centred on its lowest point so the tab joins it there, each PIN_WALL of
+// silicone from the next and from the tab's edge. A channel is formed by a pin-sized rod lying on the template's floor,
+// its axis PIN_SUNK of its radius above the floor: the rest of the rod is sunk into the floor. So the channel wraps a
+// little past the pin's middle, and the cast pin is round but for a narrow flat along its top, which still fits the
+// round holes; the silicone bends enough to let it out. sdfCav is widened by the tab; returns the pins
+// ({ x, y, r, len }: lying along -y from y).
+const PIN_WALL = 1;
+export const PIN_SUNK = 0.5;
+function pinTab(G, sdfCav, parts) {
+  const { W, H, res, ox, oy } = G, N = W * H;
+  const x = (k) => ox + (k % W) * res, y = (k) => oy - ((k / W) | 0) * res;
+  let low = -1;
+  for (let k = 0; k < N; k++) if (sdfCav[k] > 0 && (low < 0 || y(k) < y(low))) low = k;
+  const r = Math.max(...parts.map((q) => q.r)), len = Math.max(...parts.map((q) => q.len));
+  const step = 2 * r + PIN_WALL, total = (parts.length - 1) * step, xb = x(low), y0 = y(low) - PIN_WALL;
+  // the tab: a rectangle with corners rounded by c, from below the row up into the mold
+  const top = y(low) + 0.5, bottom = y0 - len - PIN_WALL, cy = (top + bottom) / 2;
+  const hx = total / 2 + r + PIN_WALL, hy = (top - bottom) / 2, c = r + PIN_WALL;
+  for (let k = 0; k < N; k++) {
+    const qx = Math.abs(x(k) - xb) - (hx - c), qy = Math.abs(y(k) - cy) - (hy - c);
+    sdfCav[k] = Math.max(sdfCav[k], c - Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - Math.min(Math.max(qx, qy), 0));
+  }
+  return parts.map((q, i) => ({ ...q, x: xb - total / 2 + i * step, y: y0 }));
+}
+
+// the lower half's: mirrored left to right, like its height map, with the keys the other way round
+const mirrorClosed = ({ keys, sprue }) => ({
+  keys: keys.map((q) => ({ ...q, x: -q.x, bump: !q.bump })), sprue: sprue && { ...sprue, x: -sprue.x },
+});
+
 // Two halves of an STL (a model for each) laid out side by side, so each stage downloads as one file.
-// With pins, the templates' stage also has a row of pins in front of the templates and the lids in front of those;
-// the cast halves and the silicone stay centred.
+// With lids, the templates' stage also has the lids in front of the templates; the cast halves and the silicone stay
+// centred.
 export function buildHalves([A, Bm], p) {
   const w = (A.G.W - 1) * A.res, h = (A.G.H - 1) * A.res, dx = w / 2 + 1;
   const withLids = !!(A.lid || Bm.lid);
-  const pinParts = A.pins.map((q) => ({ r: q.r - 0.15, len: 2 * q.d - 0.6 })); // one pin per pair of holes, a little loose
-  const pinRow = pinParts.length ? Math.max(...pinParts.map((q) => q.r)) * 2 + 4 : 0;
-  const rows = withLids ? 2 * h + 2 + pinRow : h;
-  const y0 = rows / 2 - h / 2, yPin = y0 - h / 2 - 1 - pinRow / 2, yLid = yPin - pinRow / 2 - 1 - h / 2;
+  const rows = withLids ? 2 * h + 2 : h;
+  const y0 = rows / 2 - h / 2, yLid = y0 - h - 2;
   const both = (key, y = y0) => joinMeshes([[A.geo[key], -dx, y], [Bm.geo[key], dx, y]]);
   // the silicone is turned over around x = 0 for display and download: place it mirrored, and level the
   // two halves' tops so both land on the ground
@@ -256,9 +366,6 @@ export function buildHalves([A, Bm], p) {
     const lids = [];
     for (const [M, x] of [[A, -dx], [Bm, dx]]) if (M.lid) for (const m of [M.lid.plate, M.lid.pegs, M.lid.core]) if (m) lids.push([m, x, yLid]);
     geo.lid = joinMeshes(lids);
-    const gap = 3, total = pinParts.reduce((s, q) => s + 2 * q.r + gap, -gap);
-    let x = -total / 2;
-    geo.pins = joinMeshes(pinParts.map((q) => { x += q.r; const m = cylinder(x, yPin, q.r, 0, q.len); x += q.r + gap; return [m]; }));
   }
   const st = [A.stats, Bm.stats];
   return {

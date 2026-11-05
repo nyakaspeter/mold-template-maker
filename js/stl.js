@@ -1,6 +1,21 @@
 // Reading an STL as a height map seen from above, or cut into two halves that each get a flat back.
 import { fitGrid, distTo, neighbours } from './grid.js';
 
+// A point (or direction) turned so the side up faces up, then q quarter turns (anticlockwise seen from above).
+// Lying on a side, the model's own top (+Z) points to the back of the view, so it reads upright from above.
+function turn(up, q, x, y, z) {
+  let X, Y, Z;
+  switch (up) {
+    case '-z': X = x; Y = -y; Z = -z; break;
+    case 'y': X = -x; Y = z; Z = y; break;
+    case '-y': X = x; Y = z; Z = -y; break;
+    case 'x': X = y; Y = z; Z = x; break;
+    case '-x': X = -y; Y = z; Z = -x; break;
+    default: X = x; Y = y; Z = z;
+  }
+  if (q === 1) [X, Y] = [-Y, X]; else if (q === 2) [X, Y] = [-X, -Y]; else if (q === 3) [X, Y] = [Y, -X];
+  return [X, Y, Z];
+}
 // The model's points, scaled and turned so the chosen side faces up (only turned, never mirrored)
 function orient(geom, p) {
   const src = geom.attributes.position.array, s = p.scale / 100;
@@ -10,17 +25,7 @@ function orient(geom, p) {
   const [up, turns] = p.stlUp.split(':'), q = (+turns || 0) % 4;
   for (let v = 0; v < n; v++) {
     const x = src[v * 3] * s, y = src[v * 3 + 1] * s, z = src[v * 3 + 2] * s;
-    let X, Y, Z;
-    // lying on a side, the model's own top (+Z) points to the back of the view, so it reads upright from above
-    switch (up) {
-      case '-z': X = x; Y = -y; Z = -z; break;
-      case 'y': X = -x; Y = z; Z = y; break;
-      case '-y': X = x; Y = z; Z = -y; break;
-      case 'x': X = y; Y = z; Z = x; break;
-      case '-x': X = -y; Y = z; Z = -x; break;
-      default: X = x; Y = y; Z = z;
-    }
-    if (q === 1) [X, Y] = [-Y, X]; else if (q === 2) [X, Y] = [-X, -Y]; else if (q === 3) [X, Y] = [Y, -X];
+    const [X, Y, Z] = turn(up, q, x, y, z);
     pts[v * 3] = X; pts[v * 3 + 1] = Y; pts[v * 3 + 2] = Z;
     if (X < minx) minx = X; if (X > maxx) maxx = X;
     if (Y < miny) miny = Y; if (Y > maxy) maxy = Y;
@@ -78,7 +83,10 @@ function raster(geom, p) {
 // is largest (a figure with its arms out is cut into front and back), with the more detailed side up: a face rather
 // than a back. About even (a knitted back is as detailed as a face), a figure lying on its front or back shows -Y:
 // models are usually made facing -Y (the front view in Blender and most CAD). flats: every up direction with a flat
-// back below it, so "Cut into two halves: Auto" can follow a side picked by hand.
+// back below it, so "Mold type: Auto" can follow a side picked by hand. closedUp (two-part molds): lying so the largest
+// flat bottom faces the front of the view (-Y), where the mold stays open to pour through; the outline is then as large
+// as it can be with the bottom there (null when there is no flat bottom to pour through: Auto then cuts it into halves
+// to be glued).
 export function detectSTL(geom, p) {
   geom.computeBoundingBox();
   const bb = geom.boundingBox, s = p.scale / 100;
@@ -90,8 +98,8 @@ export function detectSTL(geom, p) {
     vol += (ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx)) / 6;
   }
   vol = Math.abs(vol) * s * s * s;
-  let flatBack = null, widest = null;
-  const flats = [];
+  let flatBack = null, widest = null, bottom = null;
+  const flats = [], areas = {};
   for (const axis of ['z', 'y', 'x']) {
     const { W, H, res, top, bot, minz, maxz } = raster(geom, { ...p, stlUp: axis, res: Math.max(p.res, ext / 160) });
     const tol = Math.max(2 * res, 0.01 * (maxz - minz)), a = res * res;
@@ -105,11 +113,13 @@ export function detectSTL(geom, p) {
     }
     // facing up: +axis when the flat side is at the bottom, -axis when it is at the top
     for (const [up, flat, v] of [[axis, flatDown, volUp], ['-' + axis, flatUp, volDown]]) {
+      if (!bottom || flat * a > bottom.area) bottom = { up, area: flat * a };
       const extra = vol > 0 ? v / vol - 1 : 0;
       if (flat < 0.9 * cells || extra >= 0.15) continue;
       flats.push(up);
       if (!flatBack || extra < flatBack.extra) flatBack = { up, extra };
     }
+    areas[axis] = cells * a;
     if (!widest || cells * a > widest.area) widest = { up: axis, area: cells * a, top, bot, W, H, res };
   }
   if (!flatBack) { // the side with more surface detail faces up; about even: -Y, or + for the other axes
@@ -128,9 +138,26 @@ export function detectSTL(geom, p) {
     const plus = detail(top), minus = detail(bot);
     if (widest.up === 'y' ? plus <= 1.15 * minus : minus > 1.15 * plus) widest.up = '-' + widest.up;
   }
+  // lying on a side of the other two axes, quarter-turned so the bottom's outward side points to -Y; of the two
+  // sides of an axis, the one Auto would pick, else -. The bottom has to pass the same test as the opening the
+  // build looks for (flatEdge).
+  let closedUp = null;
+  const axis = bottom.up.replace('-', ''), out = [0, 0, 0];
+  out['xyz'.indexOf(axis)] = bottom.up.startsWith('-') ? 1 : -1;
+  if (flatSide(src, src.length / 3, out, s, [0, 0, 0]).area >= POUR_MIN) {
+    const lie = ['z', 'y', 'x'].filter((a) => a !== axis).sort((a, b) => areas[b] - areas[a])[0];
+    const up = widest.up.replace('-', '') === lie ? widest.up : '-' + lie;
+    for (let q = 0; q < 4 && !closedUp; q++) {
+      const [X, Y] = turn(up, q, ...out);
+      if (Math.abs(X) < 0.5 && Y < -0.5) closedUp = q ? `${up}:${q}` : up;
+    }
+  }
   last = null; // these were coarse; the real build reads it again at full detail
-  return { up: flatBack ? flatBack.up : widest.up, flats };
+  return { up: flatBack ? flatBack.up : widest.up, flats, closedUp };
 }
+// the smallest flat bottom a two-part mold is poured through (mm², a hole of about 6 mm), and the area a flat side of
+// the model must have at the mold's edge to be that opening (stl.js halvesFromSTL)
+const POUR_MIN = 30;
 
 // The model itself, turned like the height map and standing exactly where its object would (for showing a model
 // that isn't flat on the back as it is, rather than filled in down to its lowest point)
@@ -199,7 +226,7 @@ export function bestCut(geom, p) {
 // The two halves above and below the cut, each as a height map standing on its cut face. The lower half is
 // turned over (mirrored left to right), so both are seen from outside. Their outlines shape the templates and lids
 // (the halves themselves are cut exactly in exact.js). Pins: where the alignment holes go. core (hollow casts): the
-// lid's core over the cut face (hollowCore).
+// lid's core over the cut face (hollowCore). shell and cut (two-part molds): the whole outline and the cut face.
 export function halvesFromSTL(geom, p) {
   const { W, H, res, top, bot, minz, maxz, minx, maxy, pts, n } = raster(geom, p);
   const z0 = minz + (maxz - minz) * p.splitAt / 100, N = W * H;
@@ -214,6 +241,16 @@ export function halvesFromSTL(geom, p) {
       if (bot[k] < z0) { lower.mask[m] = 1; lower.relief[m] = z0 - bot[k]; }
       if (top[k] > z0 && bot[k] < z0) cut[k] = 1;
     }
+  }
+  // a two-part mold: both halves' molds take the whole outline, so the two silicone blocks line up when pressed
+  // together; the upper one places the opening or the pour hole on its cut face (model.js closedParts)
+  if (p.closed) {
+    upper.shell = new Uint8Array(N); lower.shell = new Uint8Array(N);
+    for (let j = 0; j < H; j++) {
+      for (let i = 0; i < W; i++) if (top[j * W + i] > -Infinity) { upper.shell[j * W + i] = 1; lower.shell[j * W + W - 1 - i] = 1; }
+    }
+    upper.cut = cut;
+    upper.opening = flatEdge(pts, n, -minx - (W - 1) * res / 2, -maxy + (H - 1) * res / 2);
   }
   upper.pins = []; lower.pins = [];
   if (p.pins || p.hollow) {
@@ -239,8 +276,40 @@ export function halvesFromSTL(geom, p) {
       upper.pins.push(pin);
       lower.pins.push({ ...pin, i: W - 1 - pin.i });
     }
+    upper.castPins = upper.pins.length > 0; // (cast in the upper half's mold: model.js pinTab)
   }
   return [upper, lower];
+}
+
+// A flat side of the model at the edge of the outline (the front, back, left or right of the view, upright to the cut):
+// a two-part mold ends there, so it stays open and is poured through it. The largest, if at least POUR_MIN, as the
+// line n·(x, y) = c it lies on (n pointing out of the model), in the template's coordinates (the model moved by dx, dy).
+function flatEdge(pts, n, dx, dy) {
+  let best = null;
+  for (const [nx, ny] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+    const f = flatSide(pts, n, [nx, ny, 0], 1, [dx, dy, 0]);
+    if (f.area >= POUR_MIN && (!best || f.area > best.area)) best = { nx, ny, ...f };
+  }
+  return best;
+}
+// How flat the model is on the side facing out along dir (the points scaled by s and moved by o): c, how far out it
+// reaches along dir, and the area of its surface there. A side up to FLAT_TOL from flat (a belly that is only nearly
+// flat) counts too: a two-part mold ends depth in from c, so the cast gets a flat spot there.
+const FLAT_TOL = 0.3;
+function flatSide(pts, n, [nx, ny, nz], s, [ox, oy, oz]) {
+  const along = (v) => nx * (pts[v * 3] * s + ox) + ny * (pts[v * 3 + 1] * s + oy) + nz * (pts[v * 3 + 2] * s + oz);
+  let c = -Infinity;
+  for (let v = 0; v < n; v++) c = Math.max(c, along(v));
+  let area = 0, depth = 0;
+  for (let t = 0; t < n; t += 3) {
+    const d = Math.max(c - along(t), c - along(t + 1), c - along(t + 2));
+    if (d > FLAT_TOL) continue;
+    depth = Math.max(depth, d);
+    const o = t * 3, ux = pts[o + 3] - pts[o], uy = pts[o + 4] - pts[o + 1], uz = pts[o + 5] - pts[o + 2];
+    const vx = pts[o + 6] - pts[o], vy = pts[o + 7] - pts[o + 1], vz = pts[o + 8] - pts[o + 2];
+    area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2 * s * s;
+  }
+  return { c, area, depth: depth + 0.05 };
 }
 
 // How far a hollow cast's core reaches into the half above each cell of the cut face (mm, below 0 where there is

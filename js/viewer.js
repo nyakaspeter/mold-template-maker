@@ -64,8 +64,8 @@ export function showModel(model, painted, upsideDown) {
     wall: add(root, g.wall, mat.resin),
     positive: add(root, g.positive, mat.resin),
   };
-  // two halves with alignment pins: the lids and the pins are printed with the templates
-  for (const k of ['lid', 'pins']) if (g[k]) meshes[k] = add(root, g[k], mat.resin);
+  // two halves with alignment pins or hollow casts: the lids are printed with the templates
+  if (g.lid) meshes.lid = add(root, g.lid, mat.resin);
   // demolded silicone, turned over left-to-right so the cavity faces up: (x, y, z) -> (-x, y, Ztop - z)
   const flip = new THREE.Group();
   flip.rotation.y = Math.PI; flip.position.z = M.Ztop; root.add(flip);
@@ -89,7 +89,8 @@ export function showModel(model, painted, upsideDown) {
 // cut STL) turned around its own middle, so it stays in place, standing on the ground. Only for showing.
 function turnedOver(g) {
   const src = g.attributes.position.array, nrm = g.attributes.normal.array, P = new Float32Array(src.length), N = new Float32Array(nrm.length);
-  const piece = (v) => (M.parts && src[v * 3] > 0 ? 1 : 0); // cut halves: left and right of x = 0
+  // cut halves: left and right of x = 0 (a two-part mold's cast is whole)
+  const piece = (v) => (M.parts && !M.whole && src[v * 3] > 0 ? 1 : 0);
   const box = [[Infinity, -Infinity, -Infinity], [Infinity, -Infinity, -Infinity]]; // min x, max x, max z
   for (let v = 0; v < src.length / 3; v++) {
     const b = box[piece(v)];
@@ -124,7 +125,7 @@ export function fitView() {
 
 // which parts are visible for a stage: 1 object, 2 template, 3 mold (0, the image, shows none)
 export function showStage(n) {
-  const vis = { 0: [], 1: ['object'], 2: ['base', 'wall', 'positive', 'lid', 'pins'], 3: ['flip', 'silOver', 'silGap'] }[n];
+  const vis = { 0: [], 1: ['object'], 2: ['base', 'wall', 'positive', 'lid'], 3: ['flip', 'silOver', 'silGap'] }[n];
   for (const k in meshes) meshes[k].visible = vis.includes(k);
 }
 export function setPainted(on) {
@@ -170,6 +171,6 @@ export function exportStage(n, baseName) {
     exportSTL([meshes.object], `${baseName}-object.stl`);
     meshes.object.geometry = shown;
   }
-  else if (n === 2) exportSTL([meshes.base, meshes.wall, meshes.positive, meshes.lid, meshes.pins].filter(Boolean), `${baseName}-template.stl`);
+  else if (n === 2) exportSTL([meshes.base, meshes.wall, meshes.positive, meshes.lid].filter(Boolean), `${baseName}-template.stl`);
   else exportSTL([meshes.silOver, meshes.silGap], `${baseName}-silicone-mold.stl`);
 }

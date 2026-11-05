@@ -44,6 +44,11 @@ function cutOut(img, m) {
   cutCache = { m, c };
   return c;
 }
+const boxOf = (P) => {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < P.length; i++) { const d = i % 3; if (P[i] < min[d]) min[d] = P[i]; if (P[i] > max[d]) max[d] = P[i]; }
+  return { min, max };
+};
 self.onmessage = async ({ data: job }) => {
   const { id, source, kind, img, edit, editVersion, p, split, notFlat, autoCut, lang } = job;
   setLang(lang);
@@ -97,9 +102,16 @@ self.onmessage = async ({ data: job }) => {
     } else hf = split ? halvesFromSTL(geom, p) : hfFromSTL(geom, p);
     let model;
     if (split) {
-      const halves = hf.map((h) => buildModel(h, p));
+      const halves = [];
+      for (const h of hf) halves.push(buildModel(h, p, halves[0])); // (a two-part mold's lower half mirrors the upper)
       await exactHalves(geom, p, halves);
       model = buildHalves(halves, p);
+      // a two-part mold's halves are filled as one: the cast is the whole object
+      if (p.closed) {
+        model.geo.object = originalMesh(geom, p);
+        const { min, max } = boxOf(model.geo.object.P);
+        model.whole = { obj: [max[0] - min[0], max[1] - min[1]], objH: max[2] - min[2] };
+      }
     } else model = buildModel(hf, p);
     model.notFlat = notFlat;
     if (notFlat && !split) model.geo.object = model.hanger ? joinMeshes([[originalMesh(geom, p)], [model.hanger]]) : originalMesh(geom, p);
